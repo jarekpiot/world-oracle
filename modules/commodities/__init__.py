@@ -129,12 +129,12 @@ class CommoditiesModule(OracleModule):
         self.price_agent = PriceAgent(self.price_feed)
         self.breaking_agent = BreakingEventAgent(self.gdelt_feed)
         self.inventory_agent = InventoryAgent(self.eia_feed, client=client)
-        self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed)
-        self.weather_agent = WeatherAgent(self.noaa_feed)
+        self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed, client=client)
+        self.weather_agent = WeatherAgent(self.noaa_feed, client=client)
         self.shipping_agent = ShippingAgent(self.baltic_feed)
         self.positioning_agent = PositioningAgent(self.cot_feed)
-        self.narrative_agent = NarrativeAgent(self.gdelt_feed)
-        self.structural_agent = StructuralAgent()
+        self.narrative_agent = NarrativeAgent(self.gdelt_feed, client=client)
+        self.structural_agent = StructuralAgent(client=client)
 
     async def handle(self, query: DecomposedQuery) -> ModuleResponse:
         """
