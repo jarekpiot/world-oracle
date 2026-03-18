@@ -192,6 +192,16 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
+# ─── Root redirect ───────────────────────────────────────────────────────────
+
+from fastapi.responses import RedirectResponse
+
+@app.get("/")
+async def root():
+    """Redirect root to the visualization."""
+    return RedirectResponse(url="/visual/")
+
+
 # ─── Endpoints ───────────────────────────────────────────────────────────────
 
 @app.post("/api/query")
