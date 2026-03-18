@@ -206,7 +206,8 @@ let panelIsLive=false;
 const DCOL={bullish:'#22dd99',bearish:'#ff5533',neutral:'#888880',unknown:'#333330'};
 const DLAB={bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'};
 
-const NODES=[
+// NODES are mutable — updated when live API data arrives
+var NODES=[
   {ri:0,ang:1.8, lab:'Red Sea blockade',     dir:'bearish', conf:0.83, ag:'geopolitical'},
   {ri:0,ang:4.3, lab:'Hormuz watch',         dir:'bearish', conf:0.76, ag:'geopolitical'},
   {ri:1,ang:0.4, lab:'energy transition',    dir:'neutral', conf:0.55, ag:'structural'},
@@ -223,6 +224,39 @@ const NODES=[
   {ri:4,ang:0.5, lab:'WTI spot price',       dir:'bullish', conf:0.70, ag:'price'},
   {ri:4,ang:3.4, lab:'crypto narrative',     dir:'neutral', conf:0.40, ag:'narrative'},
 ];
+
+// Sync NODES from live panel data — orb reflects same signals as panel
+function syncNodesToLiveData(panelData){
+  if(!panelData||!panelData.signals||panelData.signals.length===0)return;
+  const layerToRing={t3:1,t2:2,t1:3,t0:4}; // ring 0 = war (special)
+  const newNodes=[];
+  // Keep war ring nodes if in war mode
+  if(warMode){
+    newNodes.push({ri:0,ang:1.8,lab:'conflict zone',dir:'bearish',conf:0.80,ag:'geopolitical'});
+    newNodes.push({ri:0,ang:4.3,lab:'escalation risk',dir:'bearish',conf:0.75,ag:'geopolitical'});
+  }
+  // Distribute signals evenly around their ring
+  const byLayer={t3:[],t2:[],t1:[],t0:[]};
+  panelData.signals.forEach(s=>{
+    const layer=(s.layer||'t2').toLowerCase();
+    if(byLayer[layer])byLayer[layer].push(s);
+  });
+  for(const [layer,sigs] of Object.entries(byLayer)){
+    const ri=layerToRing[layer]||2;
+    sigs.forEach((s,i)=>{
+      const angSpread=(Math.PI*2)/Math.max(sigs.length,1);
+      newNodes.push({
+        ri:ri,
+        ang:i*angSpread+(ri*0.7), // offset per ring for visual variety
+        lab:s.label||s.agent||'signal',
+        dir:s.direction||'neutral',
+        conf:s.confidence||0.5,
+        ag:s.agent||'unknown',
+      });
+    });
+  }
+  if(newNodes.length>0)NODES=newNodes;
+}
 
 // Node glow tracking for panel click interaction
 let glowNode=null, glowTimer=0;
@@ -780,6 +814,9 @@ function renderPanel(data){
   oracleConf=data.confidence;
   oracleDir=data.direction;
   oracleAlign=data.alignment_score;
+
+  // Sync orb visualization nodes to match panel data
+  syncNodesToLiveData(data);
 
   // Signals grouped by layer
   const layerOrder=['t3','t2','t1','t0'];
