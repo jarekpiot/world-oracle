@@ -667,43 +667,79 @@ const MOCK_DATA={
 };
 
 function parseAPIResponse(data){
-  // Adapt API response to panel format
-  const result={
-    direction:data.direction||'neutral',
-    confidence:data.confidence||0.5,
-    confidence_band:data.confidence_band||{low:(data.confidence||0.5)-0.08,high:(data.confidence||0.5)+0.08},
-    alignment_score:data.alignment_score||data.alignment||0.5,
-    thesis:data.thesis||data.reasoning||'Awaiting full analysis.',
-    signals:[],
-    invalidators:data.invalidators||data.key_risks||[],
-    devils_advocate:data.devils_advocate||data.contrarian_view||'',
-  };
+  // Map the actual API response shape:
+  //   data.view.direction, data.view.confidence, data.view.band, data.view.alignment, data.view.thesis
+  //   data.reasoning_trace.{structural,strategic,tactical,realtime}
+  //   data.evidence.sources[].agent
+  //   data.risk.invalidators[], data.risk.devils_advocate
+  const view=data.view||{};
+  const risk=data.risk||{};
+  const trace=data.reasoning_trace||{};
+  const evidence=data.evidence||{};
 
-  // Parse signals from various API formats
-  if(data.signals&&Array.isArray(data.signals)){
-    result.signals=data.signals.map(s=>({
-      agent:s.agent||s.name||'unknown',
-      direction:s.direction||'neutral',
-      confidence:s.confidence||s.weight||0.5,
-      layer:s.layer||s.temporal_layer||'t2',
-      label:s.label||s.description||s.agent||'signal',
-    }));
-  }else if(data.agent_signals){
-    // Alternative format
-    for(const [agent,sig] of Object.entries(data.agent_signals)){
-      result.signals.push({
-        agent:agent,
-        direction:sig.direction||'neutral',
-        confidence:sig.confidence||0.5,
-        layer:sig.layer||'t2',
-        label:sig.label||agent.replace(/_/g,' '),
-      });
-    }
+  // Parse confidence band from string like "0.68–0.79"
+  let bandLow=(view.confidence||0.5)-0.08, bandHigh=(view.confidence||0.5)+0.08;
+  const bandStr=view.band||'';
+  if(bandStr){
+    const parts=bandStr.replace(/[^\d.]/g,' ').trim().split(/\s+/);
+    if(parts.length>=2){bandLow=parseFloat(parts[0])||bandLow;bandHigh=parseFloat(parts[1])||bandHigh}
   }
 
-  // Parse invalidators from string or array
-  if(typeof result.invalidators==='string'){
-    result.invalidators=result.invalidators.split('\n').filter(x=>x.trim());
+  const result={
+    direction:view.direction||data.direction||'neutral',
+    confidence:view.confidence||data.confidence||0.5,
+    confidence_band:{low:bandLow,high:bandHigh},
+    alignment_score:view.alignment||data.alignment_score||0.5,
+    thesis:view.thesis||data.thesis||'Awaiting full analysis.',
+    signals:[],
+    invalidators:risk.invalidators||data.invalidators||[],
+    devils_advocate:risk.devils_advocate||data.devils_advocate||'',
+  };
+
+  // Build signals from reasoning_trace (layer-grouped) + evidence.sources (agent details)
+  const layerMap={structural:'t3',strategic:'t2',tactical:'t1',realtime:'t0'};
+  const sources=evidence.sources||[];
+
+  for(const [layerKey,layerData] of Object.entries(trace)){
+    if(!layerData||!layerData.agents)continue;
+    const layer=layerMap[layerKey]||'t2';
+    const layerDir=layerData.status||'neutral';
+    const layerConf=layerData.confidence||0.5;
+    const reasoning=layerData.reasoning||'';
+
+    layerData.agents.forEach((agentId,idx)=>{
+      // Find source info
+      const source=sources.find(s=>s.agent===agentId)||{};
+      // Split reasoning by semicolons to assign per-agent
+      const reasonParts=reasoning.split(';').map(r=>r.trim()).filter(Boolean);
+      const agentReasoning=reasonParts[idx]||reasonParts[0]||'';
+
+      result.signals.push({
+        agent:agentId,
+        direction:layerDir,
+        confidence:layerConf,
+        layer:layer,
+        label:agentId.replace(/_/g,' ').replace(/agent$/,'').trim(),
+        reasoning:agentReasoning,
+        feed:source.feed||'',
+        decay_triggers:[],
+      });
+    });
+  }
+
+  // If no signals from trace, fall back to sources list
+  if(result.signals.length===0&&sources.length>0){
+    sources.forEach(s=>{
+      result.signals.push({
+        agent:s.agent||'unknown',
+        direction:'neutral',
+        confidence:0.5,
+        layer:'t2',
+        label:(s.agent||'').replace(/_/g,' '),
+        reasoning:'',
+        feed:s.feed||'',
+      });
+    });
   }
 
   return result;
