@@ -5,10 +5,9 @@
 
 ## Status: Production — Fully Operational
 
-Three modules live. PostgreSQL persisting. CI/CD green. Auto-deploying.
-Multi-asset visualization with state panel. T0 breaking event agent in progress.
-**167 tests passing** across 11 test files.
-**Track record:** 4+ oracle calls logged in PostgreSQL.
+Three modules, 16 agents, PostgreSQL persisting, CI/CD green, auto-deploying.
+Multi-asset visualization with state panel, hover details, and pulse intensity.
+**177 tests passing** across 11 test files.
 
 **Live:** https://world-oracle-production.up.railway.app
 **Visual:** https://world-oracle-production.up.railway.app/visual/
@@ -21,11 +20,11 @@ Multi-asset visualization with state panel. T0 breaking event agent in progress.
 ## Architecture
 
 ```
-GitHub (main) --> GitHub Actions (167 tests) --> Railway (auto-deploy)
+GitHub (main) --> GitHub Actions (177 tests) --> Railway (auto-deploy)
                                                    |
                                       PostgreSQL (Railway plugin)
                                                    |
-                             FastAPI <-- 3 modules, 15 agents, 10 feeds
+                             FastAPI <-- 3 modules, 16 agents, 10 feeds
                                 |
                   /api/query  /api/health  /api/history
                                 |
@@ -36,33 +35,29 @@ GitHub (main) --> GitHub Actions (167 tests) --> Railway (auto-deploy)
 
 ---
 
-## What's Built
+## Modules & Agents
 
-### Core Spine
-- Module Contract (`core/registry.py`) — sacred
-- Query Engine, Temporal Engine, Confidence Engine, Synthesiser, Formatter
-
-### Commodities Module (8 agents + T0 breaking in progress)
+### Commodities (9 agents)
 | Agent | Layer | Feed | Status |
 |---|---|---|---|
 | price_agent | T0 | EIA Spot | Live |
-| **breaking_agent** | **T0** | **GDELT** | **Building — detects missile strikes, explosions, port closures** |
+| breaking_agent | T0 | GDELT | Live — explosions, strikes, port closures |
 | inventory_agent | T2 | EIA Weekly | Live |
 | positioning_agent | T2 | CFTC COT | Live — full CSV parser |
-| geopolitical_agent | T1 | GDELT | Live — reads crisis arc pattern |
+| geopolitical_agent | T1 | GDELT | Live — crisis arc pattern |
 | weather_agent | T1/T2 | NOAA | Live |
 | narrative_agent | T1 | GDELT | Live |
 | structural_agent | T3 | Curated | Live |
 | shipping_agent | T2 | Baltic Dry | UNKNOWN — needs paid data |
 
-### FX Module (3 agents)
+### FX (3 agents)
 | Agent | Layer | Status |
 |---|---|---|
 | rate_differential_agent | T2/T3 | Live — EUR/USD, USD/JPY, GBP/USD, USD/CHF |
 | flow_agent | T1/T2 | Live — risk-on/risk-off |
 | sentiment_agent | T0/T1 | Live |
 
-### Crypto Module (4 agents)
+### Crypto (4 agents)
 | Agent | Layer | Status |
 |---|---|---|
 | structural_agent | T3 | Live — BTC, ETH, SOL |
@@ -70,58 +65,66 @@ GitHub (main) --> GitHub Actions (167 tests) --> Railway (auto-deploy)
 | narrative_agent | T0/T1 | Live |
 | onchain_agent | T1 | UNKNOWN — needs Glassnode/Dune |
 
-### Platform
+---
+
+## Platform
+
 | Component | Status |
 |---|---|
-| FastAPI Server | Live — 6 endpoints, rate limiting, CORS, root redirect |
-| PostgreSQL | Live — Railway plugin, data persists across deploys |
+| FastAPI Server | Live — 6 endpoints, rate limiting, CORS, root redirect to /visual/ |
+| PostgreSQL | Live — Railway plugin, persists across deploys |
 | Signal Store | Async SQLAlchemy — OracleCall + SignalLog tables |
 | Feed Monitor | Health checks every 15 min |
-| CI/CD | GitHub Actions — tests gate deploy |
+| CI/CD | GitHub Actions — 177 tests gate every deploy |
+| GDELT Rate Limiting | Fixed — shared 15min query cache + exponential backoff (2s/4s/8s) |
 
-### Visualization
-| Feature | Status |
-|---|---|
-| Canvas 2D orbital rings | 5 rings breathing at T3/T2/T1/T0/war frequencies |
-| Three.js translucent globe | Wireframe icosahedron with Fresnel glow |
-| Signal nodes | 15 orbiting dots with halos and particle sparks |
-| State panel (Option B) | Direction, confidence, band, alignment, thesis |
-| Signal breakdown | Grouped by T3/T2/T1/T0 with confidence bars |
-| Risk section | Invalidators + devil's advocate |
-| **Multi-asset selector** | **OIL, GAS, GOLD, CU, EUR, JPY, BTC, ETH** |
-| Scroll zoom | 0.4x to 1.6x — fits any screen |
-| Mode controls | live / war mode / full align / pause |
-| Mock data fallback | Renders immediately, live data replaces async |
-| LIVE/MOCK badge | Shows data source |
+---
+
+## Visualization
+
+| Feature | Status | Confirmed |
+|---|---|---|
+| Canvas 2D orbital rings | 5 rings breathing at temporal frequencies | Yes |
+| Three.js translucent globe | Wireframe icosahedron + Fresnel glow | Yes |
+| Signal nodes | 15 orbiting dots with halos and sparks | Yes |
+| **State panel (Option B)** | Direction, confidence, band, thesis, signals, risk | Yes |
+| **Multi-asset selector** | OIL, GAS, GOLD, CU, EUR, JPY, BTC, ETH | Yes |
+| **Sliding panel** | Click arrow to collapse/expand, viz fills screen | Yes — Playwright verified |
+| **Hover detail popup** | Reasoning + decay triggers on signal mouseenter | Yes — Playwright verified |
+| **Pulse intensity** | Halo size + spark rate scale with confidence | Yes — code verified |
+| Scroll zoom | 0.4x to 1.6x — rings fit any screen | Yes |
+| War mode | Red globe, fragmented ring, red bleed | Yes |
+| Full align mode | Golden corona, synced pulse | Yes |
+| Mock data fallback | Renders immediately, live replaces async | Yes |
+| LIVE/MOCK badge | Shows data source | Yes |
 
 ---
 
 ## War / Event Temporal Model
-| What happened | Layer | Why |
+| What happened | Layer | Agent |
 |---|---|---|
-| "Missile hit terminal 3 min ago" | T0 | The flash — breaking_agent |
-| "Is this escalation or one-off?" | T1 | Narrative — geopolitical_agent |
-| "Middle East in escalation phase" | T2 | Crisis arc — geopolitical_agent |
-| "Region permanently unstable" | T3 | Structural — structural_agent |
-
-The explosion is T0. Its meaning propagates upward through all layers.
+| Missile hit terminal 3 min ago | T0 | breaking_agent |
+| Is this escalation or one-off? | T1 | geopolitical_agent |
+| Middle East in escalation phase | T2 | geopolitical_agent |
+| Region permanently unstable | T3 | structural_agent |
 
 ---
 
-## Database
-- PostgreSQL on Railway — `postgres.railway.internal:5432/railway`
-- DATABASE_URL injected into API service
-- Tables auto-created on startup (OracleCall + SignalLog)
-- Track record persists permanently across deploys
+## GDELT Rate Limiting (Fixed)
+- **Problem:** 429 Too Many Requests from multiple agents hitting GDELT simultaneously
+- **Fix:** Shared query-level cache (`_GDELT_CACHE`) with 15-minute TTL
+- **Backoff:** 3 retries at 2s, 4s, 8s on 429 errors
+- **Global rate limit:** Minimum 2s between any GDELT request
+- **Affects:** geopolitical_agent, narrative_agent, breaking_agent, crypto narrative, crypto regulation
 
 ---
 
-## Test Coverage: 167 passing
+## Test Coverage: 177 passing
 | File | Count | Covers |
 |---|---|---|
 | test_foundation.py | 19 | Spine |
 | test_commodities.py | 18 | Feeds + module contract |
-| test_agents.py | 22 | All commodity agents |
+| test_agents.py | 31 | All 9 commodity agents incl. T0 breaking |
 | test_price_agent.py | 9 | T0 price |
 | test_cot_parser.py | 18 | CFTC COT parser |
 | test_fx.py | 20 | FX module |
@@ -130,19 +133,18 @@ The explosion is T0. Its meaning propagates upward through all layers.
 | test_signal_store.py | 9 | Async persistence |
 | test_feed_monitor.py | 5 | Health checks |
 | test_dashboard.py | 3 | Dashboard + visual |
-| **Total** | **167** | |
+| **Total** | **177** | |
 
 ---
 
 ## What's NOT Built Yet
 | Item | Priority | Notes |
 |---|---|---|
-| T0 breaking event agent | In progress | Detects explosions, strikes, seizures |
+| Live API data in panel | High | Panel shows MOCK — parseAPIResponse needs signal format fix |
 | Baltic Dry feed | Medium | Needs paid data provider |
 | Crypto onchain feed | Medium | Needs Glassnode/Dune |
 | Equities Module | Next | Same contract, new domain |
 | Alembic migrations | Low | Tables auto-create for now |
-| GDELT rate limiting | Low | Getting 429s — need throttling |
 
 ---
 
@@ -151,6 +153,5 @@ The explosion is T0. Its meaning propagates upward through all layers.
 DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -v
 python main.py --query "Will crude oil prices rise over the next 6 weeks?"
 DATABASE_URL=sqlite+aiosqlite:///local.db uvicorn api.server:app --reload --port 8000
-streamlit run dashboard/app.py
 open dashboard/visual/index.html
 ```
