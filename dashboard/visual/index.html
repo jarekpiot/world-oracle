@@ -11,6 +11,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#020d18;font-family:
 #wo{flex:1;height:100%;background:#020d18;position:relative;cursor:default;min-width:0;transition:flex 0.4s ease}
 canvas{display:block;position:absolute;top:0;left:0}
 #globe3d{z-index:1;pointer-events:none}
+#mobile-handle{display:none}
 #c{z-index:2}
 #ui{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:3}
 #top{position:absolute;top:18px;left:50%;transform:translateX(-50%);text-align:center}
@@ -120,13 +121,13 @@ canvas{display:block;position:absolute;top:0;left:0}
     transition:height 0.4s ease,opacity 0.8s ease;
   }
   #state-panel.collapsed{height:0;overflow:hidden;border-top:none}
-  #panel-toggle{
-    position:fixed;left:50%;bottom:40%;transform:translateX(-50%);
-    width:48px;height:24px;border-radius:6px 6px 0 0;border-bottom:none;
-    right:auto!important;top:auto!important;
+  #panel-toggle{display:none!important}
+  #mobile-handle{
+    display:flex;align-items:center;justify-content:center;
+    padding:8px 0 4px;cursor:pointer;pointer-events:all;
+    border-bottom:0.5px solid #0a2a3a;
   }
-  #state-panel.collapsed~#panel-toggle,
-  .panel-collapsed #panel-toggle{bottom:0}
+  .handle-bar{width:36px;height:4px;border-radius:2px;background:#1a3a4a}
   #top{top:10px}
   #wconf{font-size:32px}
   #wview{font-size:10px}
@@ -189,6 +190,10 @@ canvas{display:block;position:absolute;top:0;left:0}
     <div class="sp-detail-reasoning"></div>
     <div class="sp-detail-meta"></div>
     <div class="sp-detail-triggers"></div>
+  </div>
+  <!-- MOBILE DRAG HANDLE — tap to collapse panel -->
+  <div id="mobile-handle" onclick="if(window.innerWidth<=768){document.getElementById('panel-toggle').click()}">
+    <div class="handle-bar"></div>
   </div>
   <!-- ASSET SELECTOR -->
   <div class="sp-assets" id="sp-assets">
