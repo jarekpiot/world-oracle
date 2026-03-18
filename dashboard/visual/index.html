@@ -53,11 +53,11 @@ canvas{display:block;position:absolute;top:0;left:0}
 
 /* Signal hover detail popup */
 .sp-detail{
-  position:absolute;right:100%;top:0;width:260px;
+  position:fixed;width:260px;
   background:rgba(2,13,24,0.97);border:0.5px solid #0a3a4a;border-radius:8px;
   padding:12px 14px;font:400 10px/1.5 sans-serif;color:#8ab8d0;
   pointer-events:none;opacity:0;transform:translateX(8px);
-  transition:opacity 0.25s,transform 0.25s;z-index:25;
+  transition:opacity 0.25s,transform 0.25s;z-index:35;
   box-shadow:0 4px 20px rgba(0,0,0,0.4);
 }
 .sp-detail.show{opacity:1;transform:translateX(-8px)}
@@ -643,19 +643,19 @@ const MOCK_DATA={
   alignment_score:0.667,
   thesis:'Supply disruption risk from Red Sea tensions outweighs demand softening, but conviction is moderate due to mixed T2 macro signals.',
   signals:[
-    {agent:'geopolitical_risk',direction:'bearish',confidence:0.83,layer:'t3',label:'Red Sea blockade risk'},
-    {agent:'structural_cycle',direction:'neutral',confidence:0.55,layer:'t3',label:'Energy transition pressure'},
-    {agent:'commodity_super',direction:'bullish',confidence:0.60,layer:'t3',label:'Commodity supercycle'},
-    {agent:'usd_cycle',direction:'neutral',confidence:0.50,layer:'t3',label:'USD cycle positioning'},
-    {agent:'eia_inventory',direction:'bearish',confidence:0.85,layer:'t2',label:'EIA inventory build'},
-    {agent:'cftc_positioning',direction:'neutral',confidence:0.50,layer:'t2',label:'CFTC net positioning'},
-    {agent:'weather_impact',direction:'bullish',confidence:0.70,layer:'t2',label:'NOAA cold snap forecast'},
-    {agent:'shipping_index',direction:'unknown',confidence:0.25,layer:'t2',label:'Baltic Dry Index'},
-    {agent:'geopolitical_pulse',direction:'bearish',confidence:0.50,layer:'t1',label:'Geopolitical calm fading'},
-    {agent:'news_narrative',direction:'neutral',confidence:0.40,layer:'t1',label:'News narrative mixed'},
-    {agent:'weather_alert',direction:'bullish',confidence:0.70,layer:'t1',label:'Weather alert signals'},
-    {agent:'fx_sentiment',direction:'neutral',confidence:0.45,layer:'t1',label:'FX sentiment flat'},
-    {agent:'wti_price',direction:'bullish',confidence:0.70,layer:'t0',label:'WTI spot uptick'},
+    {agent:'geopolitical_risk',direction:'bearish',confidence:0.83,layer:'t3',label:'Red Sea blockade risk',reasoning:'Houthi attacks on Red Sea shipping persist into week 14. Insurance premiums for Suez transit +340%. Rerouting via Cape adds 10-14 days.',decay_triggers:['Ceasefire agreement','US/UK strikes eliminate launch capability']},
+    {agent:'structural_cycle',direction:'neutral',confidence:0.55,layer:'t3',label:'Energy transition pressure',reasoning:'Long-term demand ceiling forming as EV adoption accelerates in EU/China. But developing world growth offsets for 5-7 years.',decay_triggers:['Major EV policy reversal','Emerging market demand shock']},
+    {agent:'commodity_super',direction:'bullish',confidence:0.60,layer:'t3',label:'Commodity supercycle',reasoning:'Underinvestment in upstream since 2015 creating structural supply deficit. Supercycle thesis intact but maturing.',decay_triggers:['Capex surge >$500B/yr','Demand destruction event']},
+    {agent:'usd_cycle',direction:'neutral',confidence:0.50,layer:'t3',label:'USD cycle positioning',reasoning:'Dollar mid-cycle. DXY 103-106 range. Neither strong tailwind nor headwind for commodities at this level.',decay_triggers:['DXY breaks above 108','Fed pivot to easing']},
+    {agent:'eia_inventory',direction:'bearish',confidence:0.85,layer:'t2',label:'EIA inventory build',reasoning:'Large inventory build of +856k bbl. Stocks at 858.5M bbl. Strong supply glut signal over T2 horizon.',decay_triggers:['3 consecutive weekly draws >3M bbl','OPEC surprise cut']},
+    {agent:'cftc_positioning',direction:'neutral',confidence:0.50,layer:'t2',label:'CFTC net positioning',reasoning:'Managed money net positioning is balanced. No extreme long or short that would signal reversal risk.',decay_triggers:['Net long exceeds 80th percentile','Net short exceeds 80th percentile']},
+    {agent:'weather_impact',direction:'bullish',confidence:0.70,layer:'t2',label:'NOAA cold snap forecast',reasoning:'Cold snap / winter storm active. Heating demand spike expected. Bullish for natural gas, mildly bullish for energy complex.',decay_triggers:['Temperature normalisation forecast','Storm system dissipates']},
+    {agent:'shipping_index',direction:'unknown',confidence:0.25,layer:'t2',label:'Baltic Dry Index',reasoning:'Baltic Dry Index feed not connected. No shipping signal available. Requires paid data provider.',decay_triggers:['BDI data source connected']},
+    {agent:'geopolitical_pulse',direction:'bearish',confidence:0.50,layer:'t1',label:'Geopolitical calm fading',reasoning:'Geopolitical calm. Risk premium likely compressing. No acute supply chain threat detected.',decay_triggers:['Military escalation at chokepoint','New sanctions on oil exporter']},
+    {agent:'news_narrative',direction:'neutral',confidence:0.40,layer:'t1',label:'News narrative mixed',reasoning:'Narrative is balanced. No clear directional momentum from news flow. 50 articles, neutral tone.',decay_triggers:['Narrative reversal >2 tone points in 24h','Major counter-narrative event']},
+    {agent:'weather_alert',direction:'bullish',confidence:0.70,layer:'t1',label:'Weather alert signals',reasoning:'Active weather alerts in commodity-producing regions. Elevated supply disruption risk near-term.',decay_triggers:['Weather system clears','NOAA downgrades severity']},
+    {agent:'fx_sentiment',direction:'neutral',confidence:0.45,layer:'t1',label:'FX sentiment flat',reasoning:'FX narrative balanced across major pairs. No strong directional pressure from currency markets.',decay_triggers:['Central bank surprise decision','USD spike >1.5% in session']},
+    {agent:'wti_price',direction:'bullish',confidence:0.70,layer:'t0',label:'WTI spot uptick',reasoning:'Large upward move: $94.65 (+4.28%). Price action confirms upward pressure at T0.',decay_triggers:['Price reverses >1%','Volume spike indicates forced liquidation']},
     {agent:'crypto_narrative',direction:'neutral',confidence:0.40,layer:'t0',label:'Crypto correlation weak'},
   ],
   invalidators:[
@@ -929,10 +929,11 @@ renderPanel=function(data){
       }else{
         detail.querySelector('.sp-detail-triggers').innerHTML='';
       }
-      // Position near the row
+      // Position to the left of the panel, aligned with the row
       const rowRect=this.getBoundingClientRect();
       const panelRect=document.getElementById('state-panel').getBoundingClientRect();
-      detail.style.top=(rowRect.top-panelRect.top-20)+'px';
+      detail.style.top=Math.max(10,rowRect.top-40)+'px';
+      detail.style.left=(panelRect.left-270)+'px';
       detail.classList.add('show');
     });
     row.addEventListener('mouseleave',function(){
