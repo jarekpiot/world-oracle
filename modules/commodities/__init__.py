@@ -24,6 +24,7 @@ from modules.commodities.agents.positioning_agent import PositioningAgent
 from modules.commodities.agents.narrative_agent import NarrativeAgent
 from modules.commodities.agents.structural_agent import StructuralAgent
 from modules.commodities.agents.price_agent import PriceAgent
+from modules.commodities.agents.breaking_agent import BreakingEventAgent
 from modules.commodities.feeds.eia import EIAFeed
 from modules.commodities.feeds.price import PriceFeed
 from modules.commodities.feeds.gdelt import GDELTFeed
@@ -124,8 +125,9 @@ class CommoditiesModule(OracleModule):
         self.cot_feed = COTFeed()
         self.price_feed = PriceFeed()
 
-        # Agents — all 8 wired up (T0 through T3)
+        # Agents — all 9 wired up (T0 through T3)
         self.price_agent = PriceAgent(self.price_feed)
+        self.breaking_agent = BreakingEventAgent(self.gdelt_feed)
         self.inventory_agent = InventoryAgent(self.eia_feed)
         self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed)
         self.weather_agent = WeatherAgent(self.noaa_feed)
@@ -143,6 +145,7 @@ class CommoditiesModule(OracleModule):
         # Currently: inventory only. As agents are built, add them here.
         agent_tasks = [
             self.price_agent.run(query.domain_path),
+            self.breaking_agent.run(query.domain_path),
             self.inventory_agent.run(query.domain_path),
             self.geopolitical_agent.run(query.domain_path),
             self.weather_agent.run(query.domain_path),

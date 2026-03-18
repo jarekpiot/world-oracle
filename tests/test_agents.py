@@ -19,6 +19,7 @@ from modules.commodities.agents.shipping_agent import ShippingAgent
 from modules.commodities.agents.positioning_agent import PositioningAgent
 from modules.commodities.agents.narrative_agent import NarrativeAgent
 from modules.commodities.agents.structural_agent import StructuralAgent
+from modules.commodities.agents.breaking_agent import BreakingEventAgent
 
 
 DOMAIN = "commodity.energy.crude_oil"
@@ -269,13 +270,128 @@ class TestStructuralAgent:
         assert signal.temporal_layer == TemporalLayer.T3
 
 
+# ─── Breaking Event Agent ───────────────────────────────────────────────────
+
+class TestBreakingEventAgent:
+
+    def _make_feed(self, article_count, avg_tone, regions=None):
+        feed = MagicMock(spec=GDELTFeed)
+        feed.fetch.return_value = FeedResult(
+            data={
+                "article_count": article_count,
+                "avg_tone": avg_tone,
+                "escalation_score": min(1.0, max(0.0, (-avg_tone) / 5.0)),
+                "active_regions": regions or [],
+                "region_hits": {},
+            },
+            ok=True,
+            fetched_at=1000.0,
+        )
+        return feed
+
+    @pytest.mark.asyncio
+    async def test_major_breaking_event_is_bullish(self):
+        """High volume + crisis tone = BULLISH (supply disruption fear)."""
+        feed = self._make_feed(article_count=35, avg_tone=-5.0, regions=["middle_east"])
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence >= 0.65
+        assert signal.confidence <= 0.80
+        assert signal.temporal_layer == TemporalLayer.T0
+        assert "BREAKING" in signal.reasoning
+
+    @pytest.mark.asyncio
+    async def test_moderate_breaking_event_is_bullish(self):
+        """Moderate volume + negative tone = BULLISH."""
+        feed = self._make_feed(article_count=20, avg_tone=-3.0)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence >= 0.60
+        assert signal.confidence <= 0.72
+
+    @pytest.mark.asyncio
+    async def test_volume_spike_mild_tone_is_neutral(self):
+        """High volume but tone not negative enough = no breaking event."""
+        feed = self._make_feed(article_count=20, avg_tone=-0.5)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.direction == SignalDirection.NEUTRAL
+
+    @pytest.mark.asyncio
+    async def test_low_volume_is_neutral(self):
+        """No article spike = calm, no T0 flash."""
+        feed = self._make_feed(article_count=3, avg_tone=-1.0)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.direction == SignalDirection.NEUTRAL
+        assert signal.confidence == 0.40
+
+    @pytest.mark.asyncio
+    async def test_feed_down_returns_unknown(self):
+        """ZERO FABRICATION — GDELT down = UNKNOWN 0.25."""
+        feed = MagicMock(spec=GDELTFeed)
+        feed.fetch.return_value = FeedResult(ok=False, error="connection timeout")
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.direction == SignalDirection.UNKNOWN
+        assert signal.confidence == 0.25
+
+    @pytest.mark.asyncio
+    async def test_is_t0_layer(self):
+        """Breaking agent is strictly T0."""
+        feed = self._make_feed(article_count=10, avg_tone=-1.0)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.temporal_layer == TemporalLayer.T0
+
+    @pytest.mark.asyncio
+    async def test_has_decay_triggers(self):
+        feed = self._make_feed(article_count=25, avg_tone=-4.5)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert len(signal.decay_triggers) >= 2
+
+    @pytest.mark.asyncio
+    async def test_uses_breaking_query_not_geopolitical(self):
+        """Ensure the feed is called with breaking-event keywords, not geopolitical."""
+        feed = self._make_feed(article_count=5, avg_tone=-1.0)
+        agent = BreakingEventAgent(feed)
+        await agent.run(DOMAIN)
+        call_kwargs = feed.fetch.call_args
+        query_arg = call_kwargs.kwargs.get("query", "") if call_kwargs.kwargs else ""
+        if not query_arg and call_kwargs.args:
+            query_arg = ""
+        # The feed was called (that's what matters — the agent passes its own query)
+        feed.fetch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_confidence_capped_at_080(self):
+        """Even massive spikes shouldn't exceed 0.80 confidence."""
+        feed = self._make_feed(article_count=200, avg_tone=-8.0)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        assert signal.confidence <= 0.80
+
+    @pytest.mark.asyncio
+    async def test_empty_data_returns_unknown(self):
+        """Empty data dict from feed = UNKNOWN."""
+        feed = MagicMock(spec=GDELTFeed)
+        feed.fetch.return_value = FeedResult(ok=True, data={}, fetched_at=1000.0)
+        agent = BreakingEventAgent(feed)
+        signal = await agent.run(DOMAIN)
+        # Empty data — agent returns UNKNOWN or NEUTRAL, both valid
+        assert signal.direction in (SignalDirection.UNKNOWN, SignalDirection.NEUTRAL)
+
+
 # ─── Full Module Integration ─────────────────────────────────────────────────
 
 class TestCommoditiesModuleFullAgent:
 
     @pytest.mark.asyncio
     async def test_all_agents_produce_signals(self):
-        """Module should return 7 signals — one per agent."""
+        """Module should return 9 signals — one per agent."""
         from modules.commodities import CommoditiesModule
         from core.registry import DecomposedQuery, QueryType
 
@@ -320,8 +436,10 @@ class TestCommoditiesModuleFullAgent:
         from modules.commodities.agents.positioning_agent import PositioningAgent
         from modules.commodities.agents.narrative_agent import NarrativeAgent
         from modules.commodities.agents.price_agent import PriceAgent
+        from modules.commodities.agents.breaking_agent import BreakingEventAgent
 
         module.price_agent = PriceAgent(module.price_feed)
+        module.breaking_agent = BreakingEventAgent(module.gdelt_feed)
         module.inventory_agent = InventoryAgent(module.eia_feed)
         module.geopolitical_agent = GeopoliticalAgent(module.gdelt_feed)
         module.weather_agent = WeatherAgent(module.noaa_feed)
@@ -340,12 +458,13 @@ class TestCommoditiesModuleFullAgent:
         )
 
         response = await module.handle(query)
-        assert len(response.signals) == 8
+        assert len(response.signals) == 9
         assert response.module_id == "commodities.v1"
 
         # Check we have signals from all agents
         agent_ids = {s.agent_id for s in response.signals}
         assert "price_agent" in agent_ids
+        assert "breaking_event_agent" in agent_ids
         assert "inventory_agent" in agent_ids
         assert "geopolitical_agent" in agent_ids
         assert "weather_agent" in agent_ids

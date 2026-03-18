@@ -53,7 +53,7 @@ You may NOT modify:
 2. Oracle ABSTAINS when confidence < threshold — INSUFFICIENT_SIGNAL is valid
 3. One LLM call per synthesis — no chained reasoning within one agent
 4. Every signal must have: confidence + temporal_layer + decay_triggers + reasoning
-5. Tests must pass before any commit — all 167 must stay green
+5. Tests must pass before any commit — all 177 must stay green
 6. core/registry.py module contract does not change without both teams agreeing
 7. Decay triggers must be SPECIFIC named events, not vague conditions
 8. T0 signals do not override T2 views — different horizons, different questions
@@ -81,13 +81,11 @@ Visual:     https://world-oracle-production.up.railway.app/visual/
 Repo:       https://github.com/jarekpiot/world-oracle
 CI/CD:      GitHub Actions → Railway auto-deploy on main push
 Database:   PostgreSQL on Railway (persistent across deploys)
-Tests:      167 passing across 11 test files
+Tests:      177 passing across 11 test files
 ```
 
 ## Current known issues (fix these first)
 - GDELT returning 429 Too Many Requests → needs caching + backoff
-- /visual/ globe.gl not rendering → needs fallback or local bundle
-- CFTC COT parser not finding crude oil row → needs column mapping fix
 - Baltic Dry → no free feed, needs paid provider
 - Crypto onchain → needs Glassnode/Dune integration
 
@@ -95,7 +93,7 @@ Tests:      167 passing across 11 test files
 ```
 Python 3.11 · FastAPI · SQLAlchemy async · asyncpg · PostgreSQL
 Railway · GitHub Actions · Alembic · pytest
-globe.gl · Three.js r128 · GSAP 3 · Tone.js
+Canvas 2D + Three.js r149 · GSAP 3
 ```
 
 ## Team files
