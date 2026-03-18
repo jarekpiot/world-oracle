@@ -3,24 +3,26 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>World Oracle — The World Breathing</title>
+<title>World Oracle</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#020d18;font-family:'Helvetica Neue',Arial,sans-serif}
 #wo{width:100%;height:100%;background:#020d18;position:relative;cursor:default}
 canvas{display:block;position:absolute;top:0;left:0}
-#ui{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none}
+#globe3d{z-index:1;pointer-events:none}
+#c{z-index:2}
+#ui{position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:3}
 #top{position:absolute;top:18px;left:50%;transform:translateX(-50%);text-align:center}
 #wtitle{font:500 10px/1 sans-serif;color:#2a6a8a;letter-spacing:0.18em;text-transform:uppercase}
-#wconf{font:200 42px/1 sans-serif;color:#c8e8f8;margin-top:6px;letter-spacing:0.04em}
-#wview{font:400 11px/1 sans-serif;margin-top:5px;letter-spacing:0.1em}
+#wconf{font:200 42px/1 sans-serif;color:#c8e8f8;margin-top:6px;letter-spacing:0.04em;transition:color 1.5s}
+#wview{font:400 11px/1 sans-serif;margin-top:5px;letter-spacing:0.1em;transition:color 0.8s}
 #wstatus{font:400 9px/1 sans-serif;color:#2a5a7a;margin-top:6px;letter-spacing:0.06em}
 #ticker{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);font:400 10px/1 sans-serif;color:#2a6a8a;letter-spacing:0.07em;white-space:nowrap;transition:opacity 1s}
 #ctrls{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;pointer-events:all}
 .cb{font:400 10px/1 sans-serif;color:#2a6a8a;padding:5px 14px;border:0.5px solid #0a2a3a;border-radius:20px;cursor:pointer;transition:all 0.25s;letter-spacing:0.06em;background:rgba(2,13,24,0.6)}
 .cb:hover,.cb.on{color:#7dd4f8;border-color:#1a6a8a}
 #legend{position:absolute;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px}
-.le{display:flex;align-items:center;gap:6px;font:400 9px/1 sans-serif;opacity:0.6;transition:opacity 0.2s}
+.le{display:flex;align-items:center;gap:6px;font:400 9px/1 sans-serif;opacity:0.5;transition:opacity 0.3s}
 .le:hover{opacity:1}
 .ld{width:6px;height:6px;border-radius:50%}
 #tooltip{position:absolute;background:rgba(2,13,24,0.95);border:0.5px solid #0a3a4a;border-radius:8px;padding:9px 13px;font:400 11px/1.6 sans-serif;color:#a8d8f0;display:none;pointer-events:none;max-width:220px;z-index:20}
@@ -29,16 +31,17 @@ canvas{display:block;position:absolute;top:0;left:0}
 <body>
 <div id="wo">
 <canvas id="bg"></canvas>
+<canvas id="globe3d"></canvas>
 <canvas id="c"></canvas>
 <div id="ui">
   <div id="top">
     <div id="wtitle">world oracle</div>
-    <div id="wconf">—</div>
+    <div id="wconf">&mdash;</div>
     <div id="wview" style="color:#2a6a8a">connecting...</div>
     <div id="wstatus"></div>
   </div>
   <div id="legend">
-    <div class="le"><div class="ld" style="background:#cc3322"></div><span style="color:#e05040">war / conflict</span></div>
+    <div class="le"><div class="ld" style="background:#cc3322"></div><span style="color:#e05040">war &middot; conflict</span></div>
     <div class="le"><div class="ld" style="background:#6655cc"></div><span style="color:#9988ee">T3 structural</span></div>
     <div class="le"><div class="ld" style="background:#118866"></div><span style="color:#22cc88">T2 macro</span></div>
     <div class="le"><div class="ld" style="background:#996611"></div><span style="color:#ddaa33">T1 narrative</span></div>
@@ -55,13 +58,20 @@ canvas{display:block;position:absolute;top:0;left:0}
 </div>
 </div>
 
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════════════
-// API + STATE
+// STATE
 // ═══════════════════════════════════════════════════════════════════════════
 const API = 'https://world-oracle-production.up.railway.app';
+let oracleConf=0.74, oracleDir='bearish', oracleAlign=0.667;
+let feedsHealthy=3, feedsTotal=10, signalCount=15;
+let t=0, paused=false, warMode=false, fullAlign=false;
 
-const MOCK_SIGNALS = [
+const DCOL={bullish:'#22dd99',bearish:'#ff5533',neutral:'#888880',unknown:'#333330'};
+const DLAB={bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'};
+
+const NODES=[
   {ri:0,ang:1.8, lab:'Red Sea blockade',     dir:'bearish', conf:0.83, ag:'geopolitical'},
   {ri:0,ang:4.3, lab:'Hormuz watch',         dir:'bearish', conf:0.76, ag:'geopolitical'},
   {ri:1,ang:0.4, lab:'energy transition',    dir:'neutral', conf:0.55, ag:'structural'},
@@ -79,83 +89,211 @@ const MOCK_SIGNALS = [
   {ri:4,ang:3.4, lab:'crypto narrative',     dir:'neutral', conf:0.40, ag:'narrative'},
 ];
 
-let oracleConf = 0.74;
-let oracleDir = 'bearish';
-let oracleAlign = 0.667;
-let oracleDomain = 'commodity.energy.crude_oil';
-let feedsHealthy = 0;
-let feedsTotal = 0;
-let signalCount = 0;
-
 // ═══════════════════════════════════════════════════════════════════════════
-// CANVAS SETUP
+// CANVAS 2D SETUP
 // ═══════════════════════════════════════════════════════════════════════════
-const bgC = document.getElementById('bg');
-const bgX = bgC.getContext('2d');
-const c = document.getElementById('c');
-const ctx = c.getContext('2d');
-const wrap = document.getElementById('wo');
-
-let W,H,cx,cy,t=0,paused=false,warMode=false,fullAlign=false;
-const DPR = Math.min(devicePixelRatio,2);
+const bgC=document.getElementById('bg'), bgX=bgC.getContext('2d');
+const c=document.getElementById('c'), ctx=c.getContext('2d');
+const wrap=document.getElementById('wo');
+let W,H,cx,cy;
+const DPR=Math.min(devicePixelRatio,2);
 
 function resize(){
   const r=wrap.getBoundingClientRect();
-  W=r.width; H=r.height;
-  [bgC,c].forEach(cv=>{
-    cv.width=W*DPR; cv.height=H*DPR;
-    cv.style.width=W+'px'; cv.style.height=H+'px';
-  });
+  W=r.width;H=r.height;
+  [bgC,c].forEach(cv=>{cv.width=W*DPR;cv.height=H*DPR;cv.style.width=W+'px';cv.style.height=H+'px'});
   bgX.setTransform(DPR,0,0,DPR,0,0);
   ctx.setTransform(DPR,0,0,DPR,0,0);
-  cx=W/2; cy=H/2-18;
+  cx=W/2;cy=H/2-18;
   drawStars();
+  if(globeRenderer){globeRenderer.setSize(W,H);globeCamera.aspect=W/H;globeCamera.updateProjectionMatrix();}
+  RINGS.forEach((r,i)=>{r.r=BASE()*(i===0?1.52:i===1?1.27:i===2?1.0:i===3?0.73:0.49)});
 }
+function BASE(){return Math.min(W,H)*0.35}
 
 function drawStars(){
-  bgX.clearRect(0,0,W,H);
-  bgX.fillStyle='#020d18';
-  bgX.fillRect(0,0,W,H);
-  const rng=(s)=>{let x=s;return()=>{x=((x*1664525+1013904223)&0xffffffff)/0xffffffff};};
-  const r=rng(42);
-  for(let i=0;i<300;i++){
-    const x=r()*W, y=r()*H;
-    const sz=r()*1.2+0.2;
-    const a=r()*0.5+0.1;
-    bgX.beginPath();
-    bgX.arc(x,y,sz,0,Math.PI*2);
-    bgX.fillStyle=`rgba(180,210,240,${a})`;
-    bgX.fill();
+  bgX.clearRect(0,0,W,H);bgX.fillStyle='#020d18';bgX.fillRect(0,0,W,H);
+  const rng=s=>{let x=s;return()=>{x=((x*1664525+1013904223)&0xffffffff)/0xffffffff}};
+  const R=rng(42);
+  for(let i=0;i<350;i++){
+    bgX.beginPath();bgX.arc(R()*W,R()*H,R()*1.2+0.15,0,Math.PI*2);
+    bgX.fillStyle=`rgba(180,210,240,${R()*0.4+0.05})`;bgX.fill();
+  }
+  // nebula wisps
+  if(W>0&&H>0){
+    for(let i=0;i<6;i++){
+      const gx=R()*W,gy=R()*H,gr=80+R()*120;
+      if(gr>0){
+        const g=bgX.createRadialGradient(gx,gy,0,gx,gy,gr);
+        g.addColorStop(0,`rgba(20,60,100,${0.03+R()*0.03})`);
+        g.addColorStop(1,'rgba(2,13,24,0)');
+        bgX.fillStyle=g;bgX.fillRect(gx-gr,gy-gr,gr*2,gr*2);
+      }
+    }
   }
 }
-resize();
+// deferred — resize called after RINGS defined
 window.addEventListener('resize',resize);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THREE.JS — TRANSLUCENT HOLOGRAPHIC GLOBE
+// ═══════════════════════════════════════════════════════════════════════════
+var globeRenderer=null,globeScene=null,globeCamera=null,globeMesh=null,glowMesh=null;
+
+function initGlobe(){
+  const cv=document.getElementById('globe3d');
+  globeRenderer=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true});
+  globeRenderer.setSize(W,H);
+  globeRenderer.setPixelRatio(DPR);
+  globeRenderer.setClearColor(0x000000,0);
+
+  globeScene=new THREE.Scene();
+  globeCamera=new THREE.PerspectiveCamera(45,W/H,0.1,1000);
+  globeCamera.position.z=5;
+
+  const globeR=0.9;
+
+  // Wireframe sphere — the world as a grid
+  const wireGeo=new THREE.IcosahedronGeometry(globeR,3);
+  const wireMat=new THREE.MeshBasicMaterial({
+    color:0x1a5a8a,wireframe:true,transparent:true,opacity:0.12
+  });
+  globeMesh=new THREE.Mesh(wireGeo,wireMat);
+  globeScene.add(globeMesh);
+
+  // Solid inner sphere — very faint
+  const innerGeo=new THREE.SphereGeometry(globeR*0.98,32,32);
+  const innerMat=new THREE.MeshBasicMaterial({
+    color:0x0a2040,transparent:true,opacity:0.3,side:THREE.FrontSide
+  });
+  globeScene.add(new THREE.Mesh(innerGeo,innerMat));
+
+  // Fresnel glow shell
+  const glowGeo=new THREE.SphereGeometry(globeR*1.15,32,32);
+  const glowMat=new THREE.ShaderMaterial({
+    transparent:true,side:THREE.BackSide,depthWrite:false,
+    blending:THREE.AdditiveBlending,
+    uniforms:{
+      glowColor:{value:new THREE.Color(0x1fb8ff)},
+      intensity:{value:2.2},
+      viewVector:{value:globeCamera.position}
+    },
+    vertexShader:`
+      varying vec3 vNormal;
+      varying vec3 vPositionNormal;
+      void main(){
+        vNormal=normalize(normalMatrix*normal);
+        vPositionNormal=normalize((modelViewMatrix*vec4(position,1.0)).xyz);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+      }
+    `,
+    fragmentShader:`
+      uniform vec3 glowColor;
+      uniform float intensity;
+      varying vec3 vNormal;
+      varying vec3 vPositionNormal;
+      void main(){
+        float f=pow(0.65-dot(vNormal,vPositionNormal),intensity);
+        gl_FragColor=vec4(glowColor,f*0.4);
+      }
+    `
+  });
+  glowMesh=new THREE.Mesh(glowGeo,glowMat);
+  globeScene.add(glowMesh);
+
+  // Latitude rings on globe — subtle grid lines
+  [0.3,0.6,-0.3,-0.6].forEach(y=>{
+    const ringR=Math.sqrt(globeR*globeR-y*y);
+    const rGeo=new THREE.RingGeometry(ringR-0.003,ringR+0.003,64);
+    const rMat=new THREE.MeshBasicMaterial({color:0x2a7aaa,transparent:true,opacity:0.08,side:THREE.DoubleSide});
+    const rm=new THREE.Mesh(rGeo,rMat);
+    rm.position.y=y;rm.rotation.x=Math.PI/2;
+    globeMesh.add(rm);
+  });
+
+  // Equator ring — slightly brighter
+  const eqGeo=new THREE.RingGeometry(globeR-0.004,globeR+0.004,64);
+  const eqMat=new THREE.MeshBasicMaterial({color:0x3a8abb,transparent:true,opacity:0.15,side:THREE.DoubleSide});
+  const eq=new THREE.Mesh(eqGeo,eqMat);
+  eq.rotation.x=Math.PI/2;
+  globeMesh.add(eq);
+
+  // Ambient light
+  globeScene.add(new THREE.AmbientLight(0xffffff,0.3));
+}
+
+function updateGlobe(){
+  if(!globeMesh)return;
+
+  // Slow rotation
+  globeMesh.rotation.y+=0.0015;
+  globeMesh.rotation.x=0.15*Math.sin(t*0.1);
+
+  // Breathing scale — synced with T0
+  const breathScale=1.0+0.02*Math.sin(t*Math.PI*4);// T0 heartbeat
+  globeMesh.scale.setScalar(breathScale);
+
+  // Color shifts with state
+  const wireColor=fullAlign?0xcc8800:warMode?0x882233:0x1a5a8a;
+  const glowColor=fullAlign?new THREE.Color(0xffaa00):warMode?new THREE.Color(0xff3322):new THREE.Color(0x1fb8ff);
+  const wireOpacity=fullAlign?0.25:warMode?0.20:0.12;
+
+  globeMesh.material.color.setHex(wireColor);
+  globeMesh.material.opacity=wireOpacity;
+  glowMesh.material.uniforms.glowColor.value.lerp(glowColor,0.02);
+
+  globeRenderer.render(globeScene,globeCamera);
+}
+
+try{initGlobe()}catch(e){console.warn('WebGL not available:',e)}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PULSE RINGS — emanate from core on heartbeat
+// ═══════════════════════════════════════════════════════════════════════════
+const PULSES=[];
+let lastBeat=0;
+function emitPulse(){
+  PULSES.push({r:0,maxR:BASE()*0.5,life:1,col:fullAlign?'#ffaa00':warMode?'#ff3322':'#1fb8ff'});
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AMBIENT PARTICLES — drifting in the void between rings
+// ═══════════════════════════════════════════════════════════════════════════
+const DUST=[];
+function initDust(){
+  for(let i=0;i<60;i++){
+    const angle=Math.random()*Math.PI*2;
+    const dist=BASE()*0.5+Math.random()*BASE()*1.1;
+    DUST.push({
+      x:Math.cos(angle)*dist,y:Math.sin(angle)*dist,
+      vx:(Math.random()-0.5)*0.08,vy:(Math.random()-0.5)*0.08,
+      size:0.5+Math.random()*1.2,alpha:0.1+Math.random()*0.15,
+      drift:Math.random()*Math.PI*2
+    });
+  }
+}
+initDust();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RINGS
 // ═══════════════════════════════════════════════════════════════════════════
-const BASE = Math.min(W,H)*0.35;
 const RINGS=[
-  {id:'war', r:BASE*1.52, col:'#cc3322', glow:'#ff5533', period:6.5,  ph:0,   width:1.2, dash:[4,8]},
-  {id:'t3',  r:BASE*1.27, col:'#5544bb', glow:'#9988ee', period:8,    ph:1.3, width:1,   dash:[]},
-  {id:'t2',  r:BASE*1.00, col:'#117755', glow:'#22cc88', period:4,    ph:2.2, width:1.2, dash:[]},
-  {id:'t1',  r:BASE*0.73, col:'#886611', glow:'#ddaa33', period:2,    ph:0.7, width:1,   dash:[]},
-  {id:'t0',  r:BASE*0.49, col:'#114477', glow:'#44aaee', period:0.5,  ph:3.1, width:1.5, dash:[]},
+  {id:'war',r:0,col:'#cc3322',glow:'#ff5533',period:6.5,ph:0,  width:1.2,dash:[4,8]},
+  {id:'t3', r:0,col:'#5544bb',glow:'#9988ee',period:8,  ph:1.3,width:1,  dash:[]},
+  {id:'t2', r:0,col:'#117755',glow:'#22cc88',period:4,  ph:2.2,width:1.2,dash:[]},
+  {id:'t1', r:0,col:'#886611',glow:'#ddaa33',period:2,  ph:0.7,width:1,  dash:[]},
+  {id:'t0', r:0,col:'#114477',glow:'#44aaee',period:0.5,ph:3.1,width:1.5,dash:[]},
 ];
+// Initial resize — must be after RINGS defined
+resize();
 
-const NODES = MOCK_SIGNALS;
-const DCOL={bullish:'#22dd99',bearish:'#ff5533',neutral:'#888880',unknown:'#333330'};
-const DLAB={bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PARTICLES
-// ═══════════════════════════════════════════════════════════════════════════
+// Spark particles
 const PARTS=[];
-function spark(x,y,dir,n=6){
+function spark(x,y,dir,n=5){
   const col=DCOL[dir]||'#888880';
   for(let i=0;i<n;i++){
     PARTS.push({x,y,tx:cx+(Math.random()-0.5)*20,ty:cy+(Math.random()-0.5)*20,
-      col,life:1,speed:0.015+Math.random()*0.012,size:1.2+Math.random()*1.8});
+      col,life:1,speed:0.012+Math.random()*0.01,size:1+Math.random()*1.5});
   }
 }
 
@@ -171,74 +309,47 @@ const TICKS=[
   'when all layers align \u2014 highest conviction',
   'insufficient signal is a valid answer',
   'the oracle reads the breathing, not the heartbeat',
+  'a T1 signal and a T2 signal are never in conflict',
+  'war is the world holding its breath',
 ];
-let ti=0;
-const tel=document.getElementById('ticker');
-function rotateTick(){
-  tel.style.opacity=0;
-  setTimeout(()=>{tel.textContent=TICKS[ti++%TICKS.length];tel.style.opacity=1;},600);
-}
-rotateTick(); setInterval(rotateTick,4000);
+let ti=0;const tel=document.getElementById('ticker');
+function rotateTick(){tel.style.opacity=0;setTimeout(()=>{tel.textContent=TICKS[ti++%TICKS.length];tel.style.opacity=1},600)}
+rotateTick();setInterval(rotateTick,4500);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DRAW
+// DRAW FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 function drawAurora(breath){
-  const bands=[
-    {r:RINGS[0].r+30,col:'#0a2040',a:0.10},
-    {r:RINGS[1].r+10,col:'#091830',a:0.12},
-    {r:RINGS[2].r+10,col:'#081428',a:0.14},
-    {r:RINGS[3].r+10,col:'#070f20',a:0.16},
-  ];
-  bands.forEach(b=>{
-    ctx.beginPath();
-    ctx.arc(cx,cy,b.r+breath*3,0,Math.PI*2);
-    ctx.fillStyle=b.col;
-    ctx.globalAlpha=b.a;
-    ctx.fill();
-    ctx.globalAlpha=1;
+  [RINGS[0].r+30,RINGS[1].r+10,RINGS[2].r+10,RINGS[3].r+10].forEach((r,i)=>{
+    ctx.beginPath();ctx.arc(cx,cy,r+breath*3,0,Math.PI*2);
+    ctx.fillStyle=['#0a2040','#091830','#081428','#070f20'][i];
+    ctx.globalAlpha=[0.08,0.10,0.12,0.14][i];ctx.fill();ctx.globalAlpha=1;
   });
 }
 
-function drawRings(breath){
+function drawRings(){
   RINGS.forEach((ring,i)=>{
     const pulse=Math.sin(t*(Math.PI*2/ring.period)+ring.ph);
-    const pr=ring.r+pulse*(warMode&&i===0?10:5)+(fullAlign?2:0);
-    const baseA=warMode&&i===0?0.5:0.2;
-    const a=baseA+0.15*((pulse+1)/2)*(fullAlign?1.8:1);
+    const pr=ring.r+pulse*(warMode&&i===0?10:4)+(fullAlign?2:0);
+    const baseA=warMode&&i===0?0.45:0.18;
+    const a=baseA+0.12*((pulse+1)/2)*(fullAlign?1.8:1);
 
-    ctx.beginPath();
-    ctx.arc(cx,cy,pr+8,0,Math.PI*2);
-    ctx.strokeStyle=ring.glow;
-    ctx.lineWidth=4;
-    ctx.globalAlpha=a*0.18;
-    ctx.stroke();
-    ctx.globalAlpha=1;
+    // outer glow
+    ctx.beginPath();ctx.arc(cx,cy,pr+6,0,Math.PI*2);
+    ctx.strokeStyle=ring.glow;ctx.lineWidth=5;ctx.globalAlpha=a*0.12;ctx.stroke();ctx.globalAlpha=1;
 
     if(warMode&&i===0){
-      ctx.save();
       for(let a2=0;a2<Math.PI*2;a2+=0.08){
-        const gap=Math.sin(a2*9+t*1.4)>0.25+0.15*Math.sin(t*0.7);
-        if(gap)continue;
-        ctx.beginPath();
-        ctx.arc(cx,cy,pr,a2,a2+0.07);
-        ctx.strokeStyle=ring.glow;
-        ctx.lineWidth=ring.width+1;
-        ctx.globalAlpha=a*1.6;
-        ctx.stroke();
-        ctx.globalAlpha=1;
+        if(Math.sin(a2*9+t*1.4)>0.25+0.15*Math.sin(t*0.7))continue;
+        ctx.beginPath();ctx.arc(cx,cy,pr,a2,a2+0.07);
+        ctx.strokeStyle=ring.glow;ctx.lineWidth=ring.width+1;ctx.globalAlpha=a*1.5;ctx.stroke();ctx.globalAlpha=1;
       }
-      ctx.restore();
-    } else {
-      ctx.beginPath();
-      ctx.arc(cx,cy,pr,0,Math.PI*2);
-      ctx.strokeStyle=ring.glow;
-      ctx.lineWidth=ring.width*(fullAlign?1.8:1);
-      ctx.globalAlpha=a*(fullAlign?1.5:1);
-      if(ring.dash.length) ctx.setLineDash(ring.dash);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.globalAlpha=1;
+    }else{
+      ctx.beginPath();ctx.arc(cx,cy,pr,0,Math.PI*2);
+      ctx.strokeStyle=ring.glow;ctx.lineWidth=ring.width*(fullAlign?1.6:1);
+      ctx.globalAlpha=a*(fullAlign?1.4:1);
+      if(ring.dash.length)ctx.setLineDash(ring.dash);
+      ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
     }
   });
 }
@@ -251,92 +362,96 @@ function drawNodes(){
     const nx=cx+ring.r*Math.cos(ang);
     const ny=cy+ring.r*Math.sin(ang);
     const col=DCOL[n.dir];
-    const sz=3.5+n.conf*5;
+    const sz=3+n.conf*4.5;
 
+    // halo
     ctx.beginPath();ctx.arc(nx,ny,sz*3,0,Math.PI*2);
-    ctx.fillStyle=col;ctx.globalAlpha=0.07+0.04*Math.sin(t*2.5+n.ang);ctx.fill();ctx.globalAlpha=1;
-
-    ctx.beginPath();ctx.arc(nx,ny,sz*1.6,0,Math.PI*2);
-    ctx.fillStyle=col;ctx.globalAlpha=0.18+0.08*Math.sin(t*2+n.ang);ctx.fill();ctx.globalAlpha=1;
-
+    ctx.fillStyle=col;ctx.globalAlpha=0.06+0.03*Math.sin(t*2.5+n.ang);ctx.fill();ctx.globalAlpha=1;
+    // mid
+    ctx.beginPath();ctx.arc(nx,ny,sz*1.5,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.globalAlpha=0.16+0.06*Math.sin(t*2+n.ang);ctx.fill();ctx.globalAlpha=1;
+    // core
     ctx.beginPath();ctx.arc(nx,ny,sz,0,Math.PI*2);
     ctx.fillStyle=col;ctx.globalAlpha=0.85+0.15*Math.sin(t*3+n.ang);ctx.fill();ctx.globalAlpha=1;
 
-    const tdist=Math.sqrt((nx-cx)**2+(ny-cy)**2);
-    const ta=Math.max(0,0.06-(tdist/ring.r)*0.04);
+    // thread to center
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(nx,ny);
-    ctx.strokeStyle=col;ctx.lineWidth=0.4;ctx.globalAlpha=ta*(fullAlign?2.5:1);ctx.stroke();ctx.globalAlpha=1;
+    ctx.strokeStyle=col;ctx.lineWidth=0.3;
+    ctx.globalAlpha=Math.max(0,0.04*(fullAlign?3:1));ctx.stroke();ctx.globalAlpha=1;
 
-    if(Math.random()<0.002) spark(nx,ny,n.dir);
+    if(Math.random()<0.0015)spark(nx,ny,n.dir);
   });
 }
 
-function drawParticles(){
-  for(let i=PARTS.length-1;i>=0;i--){
-    const p=PARTS[i];
-    p.x+=(p.tx-p.x)*p.speed;
-    p.y+=(p.ty-p.y)*p.speed;
-    p.life-=0.016;
-    if(p.life<=0){PARTS.splice(i,1);continue;}
-    ctx.beginPath();ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);
-    ctx.fillStyle=p.col;ctx.globalAlpha=p.life*0.85;ctx.fill();ctx.globalAlpha=1;
+function drawPulses(){
+  // T0 heartbeat pulse emission
+  const beatPhase=Math.sin(t*Math.PI*4);
+  if(beatPhase>0.95&&t-lastBeat>0.25){lastBeat=t;emitPulse()}
+
+  for(let i=PULSES.length-1;i>=0;i--){
+    const p=PULSES[i];
+    p.r+=(p.maxR-p.r)*0.03;
+    p.life-=0.012;
+    if(p.life<=0){PULSES.splice(i,1);continue}
+    ctx.beginPath();ctx.arc(cx,cy,p.r,0,Math.PI*2);
+    ctx.strokeStyle=p.col;ctx.lineWidth=1.5*p.life;ctx.globalAlpha=p.life*0.15;ctx.stroke();ctx.globalAlpha=1;
   }
 }
 
-function drawGlobe(breath){
-  const r=Math.min(W,H)*0.055+breath*7+(fullAlign?4:0);
-  const gcol=fullAlign?'#cc8800':warMode?'#882200':'#0a3060';
-  const gcol2=fullAlign?'#ffaa00':warMode?'#ff3300':'#1fb8ff';
-
-  [[r*4.5,0.06],[r*3,0.1],[r*1.8,0.18]].forEach(([gr,ga])=>{
-    ctx.beginPath();ctx.arc(cx,cy,gr,0,Math.PI*2);ctx.fillStyle=gcol2;
-    ctx.globalAlpha=ga*(fullAlign?2.2:1)*(warMode?1.6:1)*(0.8+breath*0.4);ctx.fill();ctx.globalAlpha=1;
+function drawDust(){
+  DUST.forEach(d=>{
+    d.x+=d.vx+Math.sin(t*0.3+d.drift)*0.02;
+    d.y+=d.vy+Math.cos(t*0.25+d.drift)*0.02;
+    // wrap around
+    const dx=d.x,dy=d.y,dist=Math.sqrt(dx*dx+dy*dy);
+    if(dist>BASE()*1.7){d.x*=-0.5;d.y*=-0.5}
+    ctx.beginPath();ctx.arc(cx+d.x,cy+d.y,d.size,0,Math.PI*2);
+    ctx.fillStyle='#4080a0';ctx.globalAlpha=d.alpha*(0.7+0.3*Math.sin(t+d.drift));ctx.fill();ctx.globalAlpha=1;
   });
+}
 
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle=gcol;ctx.globalAlpha=0.97;ctx.fill();ctx.globalAlpha=1;
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=gcol2;ctx.lineWidth=fullAlign?2.5:1.5;
-  ctx.globalAlpha=(0.5+breath*0.45)*(fullAlign?1.5:1);ctx.stroke();ctx.globalAlpha=1;
-
-  ctx.globalAlpha=0.12+breath*0.05;ctx.strokeStyle='#a0d0f0';ctx.lineWidth=0.6;
-  [[0.3,1.1,0.55],[1.3,2.2,0.65],[2.1,3.1,0.5],[3.3,4.0,0.7],[4.2,5.1,0.45],[5.3,6.0,0.6]].forEach(([sa,ea,ri])=>{
-    ctx.beginPath();ctx.arc(cx+Math.cos(t*0.04)*2,cy+Math.sin(t*0.03)*1.5,r*ri,sa,ea);ctx.stroke();
-  });
-  ctx.globalAlpha=1;
-
-  ctx.beginPath();ctx.arc(cx-r*0.25,cy-r*0.25,r*0.18,0,Math.PI*2);
-  ctx.fillStyle='rgba(255,255,255,0.08)';ctx.fill();
+function drawSparks(){
+  for(let i=PARTS.length-1;i>=0;i--){
+    const p=PARTS[i];
+    p.x+=(p.tx-p.x)*p.speed;p.y+=(p.ty-p.y)*p.speed;p.life-=0.016;
+    if(p.life<=0){PARTS.splice(i,1);continue}
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);
+    ctx.fillStyle=p.col;ctx.globalAlpha=p.life*0.8;ctx.fill();ctx.globalAlpha=1;
+  }
 }
 
 function updateUI(){
   const conf=fullAlign?0.88:warMode?0.61:oracleConf;
   const dir=fullAlign?'bullish':warMode?'bearish':oracleDir;
-  document.getElementById('wconf').textContent=conf.toFixed(2);
+  const el=document.getElementById('wconf');
+  el.textContent=conf.toFixed(2);
+  el.style.color=conf>=0.75?'#f0d060':conf>=0.5?'#c8e8f8':'#445566';
   const vEl=document.getElementById('wview');
-  if(fullAlign){
-    vEl.textContent='\u25B2 bullish \u00b7 all layers aligned \u00b7 high conviction';
-    vEl.style.color='#ffaa00';
-  } else if(warMode){
-    vEl.textContent='\u26A0 war premium dominant \u00b7 T1 geopolitical elevated';
-    vEl.style.color='#ff5533';
-  } else {
+  if(fullAlign){vEl.textContent='\u25B2 bullish \u00b7 all layers aligned \u00b7 high conviction';vEl.style.color='#ffaa00'}
+  else if(warMode){vEl.textContent='\u26A0 war premium \u00b7 T1 geopolitical elevated';vEl.style.color='#ff5533'}
+  else{
     const sym=({bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'})[dir]||'\u25CB';
     vEl.textContent=`${sym} ${dir} \u00b7 alignment ${oracleAlign.toFixed(2)}`;
     vEl.style.color=DCOL[dir]||'#888880';
   }
-  const sEl=document.getElementById('wstatus');
-  sEl.textContent=`${signalCount} signals \u00b7 ${feedsHealthy}/${feedsTotal} feeds`;
+  document.getElementById('wstatus').textContent=`${signalCount} signals \u00b7 ${feedsHealthy}/${feedsTotal} feeds`;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN LOOP
+// ═══════════════════════════════════════════════════════════════════════════
 function draw(){
   ctx.clearRect(0,0,W,H);
   const breath=0.5+0.5*Math.sin(t*0.55);
   drawAurora(breath);
-  drawRings(breath);
+  drawDust();
+  drawPulses();
+  drawRings();
   drawNodes();
-  drawParticles();
-  drawGlobe(breath);
+  drawSparks();
+  updateGlobe();
   updateUI();
-  if(!paused) t+=0.016;
+  if(!paused)t+=0.016;
   requestAnimationFrame(draw);
 }
 draw();
@@ -344,84 +459,47 @@ draw();
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTROLS
 // ═══════════════════════════════════════════════════════════════════════════
-document.getElementById('b-pause').addEventListener('click',function(){
-  paused=!paused;this.classList.toggle('on',paused);
-});
-document.getElementById('b-war').addEventListener('click',function(){
-  warMode=!warMode;fullAlign=false;
-  this.classList.toggle('on',warMode);
-  document.getElementById('b-align').classList.remove('on');
-});
-document.getElementById('b-align').addEventListener('click',function(){
-  fullAlign=!fullAlign;warMode=false;
-  this.classList.toggle('on',fullAlign);
-  document.getElementById('b-war').classList.remove('on');
-});
-document.getElementById('b-live').addEventListener('click',function(){
-  warMode=false;fullAlign=false;paused=false;
-  document.getElementById('b-war').classList.remove('on');
-  document.getElementById('b-align').classList.remove('on');
-  document.getElementById('b-pause').classList.remove('on');
-  poll();
-});
+document.getElementById('b-pause').addEventListener('click',function(){paused=!paused;this.classList.toggle('on',paused)});
+document.getElementById('b-war').addEventListener('click',function(){warMode=!warMode;fullAlign=false;this.classList.toggle('on',warMode);document.getElementById('b-align').classList.remove('on')});
+document.getElementById('b-align').addEventListener('click',function(){fullAlign=!fullAlign;warMode=false;this.classList.toggle('on',fullAlign);document.getElementById('b-war').classList.remove('on')});
+document.getElementById('b-live').addEventListener('click',function(){warMode=false;fullAlign=false;paused=false;document.getElementById('b-war').classList.remove('on');document.getElementById('b-align').classList.remove('on');document.getElementById('b-pause').classList.remove('on');poll()});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOOLTIP
 // ═══════════════════════════════════════════════════════════════════════════
 c.addEventListener('mousemove',function(e){
-  const r=c.getBoundingClientRect();
-  const mx=e.clientX-r.left, my=e.clientY-r.top;
-  const tip=document.getElementById('tooltip');
-  let hit=false;
+  const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const tip=document.getElementById('tooltip');let hit=false;
   NODES.forEach(n=>{
     const ring=RINGS[n.ri];
     const spd=({war:0.00025,t3:0.0006,t2:0.0012,t1:0.0025,t0:0.006})[ring.id]||0.001;
     const ang=n.ang+t*spd*60;
-    const nx=cx+ring.r*Math.cos(ang);
-    const ny=cy+ring.r*Math.sin(ang);
-    if(Math.hypot(mx-nx,my-ny)<16){
-      tip.style.display='block';
-      tip.style.left=Math.min(nx+18,W-220)+'px';
-      tip.style.top=Math.max(ny-30,10)+'px';
-      const col=DCOL[n.dir];
-      tip.innerHTML=`<span style="color:${col};font-weight:500">${DLAB[n.dir]||''} ${n.dir}</span><br>${n.lab}<br><span style="color:#4a7a9a;font-size:10px">${n.ag} \u00b7 ${Math.round(n.conf*100)}% \u00b7 ${ring.id}</span>`;
+    const nx=cx+ring.r*Math.cos(ang),ny=cy+ring.r*Math.sin(ang);
+    if(Math.hypot(mx-nx,my-ny)<18){
+      tip.style.display='block';tip.style.left=Math.min(nx+18,W-230)+'px';tip.style.top=Math.max(ny-30,10)+'px';
+      tip.innerHTML=`<span style="color:${DCOL[n.dir]};font-weight:500">${DLAB[n.dir]||''} ${n.dir}</span><br>${n.lab}<br><span style="color:#4a7a9a;font-size:10px">${n.ag} \u00b7 ${Math.round(n.conf*100)}% \u00b7 ${ring.id}</span>`;
       hit=true;
     }
   });
-  if(!hit) tip.style.display='none';
-  c.style.cursor=hit?'pointer':'default';
+  if(!hit)tip.style.display='none';c.style.cursor=hit?'pointer':'default';
 });
 c.addEventListener('mouseleave',()=>{document.getElementById('tooltip').style.display='none'});
 
 // ═══════════════════════════════════════════════════════════════════════════
-// API POLLING
+// API
 // ═══════════════════════════════════════════════════════════════════════════
 async function poll(){
-  try {
-    const data = await fetch(`${API}/api/health`).then(r=>r.json());
-    const summary = data.feed_summary || {};
-    feedsHealthy = summary.healthy || 0;
-    feedsTotal = summary.total_feeds || 0;
-    signalCount = Object.keys(data.feed_health||{}).reduce((acc,m)=>{
-      return acc + Object.keys(data.feed_health[m]||{}).length;
-    },0);
-  } catch {
-    feedsHealthy = 3; feedsTotal = 10; signalCount = 15;
-  }
-
-  try {
-    const hist = await fetch(`${API}/api/history?limit=1`).then(r=>r.json());
-    if(hist.calls && hist.calls.length > 0){
-      const last = hist.calls[0];
-      oracleConf = last.confidence || 0.74;
-      oracleDir = last.direction || 'neutral';
-      oracleDomain = last.domain || '';
-    }
-  } catch {}
+  try{
+    const d=await fetch(`${API}/api/health`).then(r=>r.json());
+    const s=d.feed_summary||{};feedsHealthy=s.healthy||0;feedsTotal=s.total_feeds||0;
+    signalCount=Object.keys(d.feed_health||{}).reduce((a,m)=>a+Object.keys(d.feed_health[m]||{}).length,0);
+  }catch{}
+  try{
+    const h=await fetch(`${API}/api/history?limit=1`).then(r=>r.json());
+    if(h.calls&&h.calls.length>0){const l=h.calls[0];oracleConf=l.confidence||0.74;oracleDir=l.direction||'neutral'}
+  }catch{}
 }
-
-poll();
-setInterval(()=>{ if(!paused && !warMode && !fullAlign) poll(); }, 30000);
+poll();setInterval(()=>{if(!paused&&!warMode&&!fullAlign)poll()},30000);
 </script>
 </body>
 </html>
