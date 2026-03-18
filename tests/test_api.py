@@ -5,7 +5,7 @@ Run: python -m pytest tests/test_api.py -v
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 from fastapi.testclient import TestClient
 
 from core.registry import (
@@ -30,11 +30,16 @@ def client(tmp_path):
     ]
 
     server_module.signal_store = MagicMock()
-    server_module.signal_store.get_history.return_value = []
-    server_module.signal_store.get_track_record.return_value = {
+    server_module.signal_store.ensure_tables = AsyncMock()
+    server_module.signal_store.log_call = AsyncMock(return_value=1)
+    server_module.signal_store.log_signals = AsyncMock()
+    server_module.signal_store.get_history = AsyncMock(return_value=[])
+    server_module.signal_store.get_track_record = AsyncMock(return_value={
         "total_calls": 0, "responded": 0, "abstained": 0,
         "scored": 0, "outcomes": {}, "win_rate": None,
-    }
+    })
+    server_module.signal_store.get_call = AsyncMock(return_value=None)
+    server_module.signal_store.record_outcome = AsyncMock(return_value=True)
 
     server_module.feed_monitor = MagicMock()
     server_module.feed_monitor.last_check = {"commodities.v1": {"eia": {"status": "ok"}}}
@@ -154,7 +159,7 @@ class TestQueryEndpoint:
             mock_confidence,
         ))
 
-        server.signal_store.log_call.return_value = 42
+        server.signal_store.log_call = AsyncMock(return_value=42)
 
         resp = c.post("/api/query", json={"query": "Will crude oil rise over 6 weeks?"})
         assert resp.status_code == 200

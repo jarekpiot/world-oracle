@@ -1,194 +1,197 @@
 """
-World Oracle — Signal Store
+World Oracle — Signal Store (Async)
 Persistence layer for oracle calls. The track record.
 
-Every query + response is logged. Outcomes are filled in later
-when the market verdict is known. This store is what makes
-Tier 2 monetisation possible — a verifiable track record.
+Async SQLAlchemy 2.0 — works with both PostgreSQL (production)
+and SQLite+aiosqlite (local dev / tests).
 
-SQLite for now. Swap to PostgreSQL for production.
+Every query + response is logged. Outcomes are filled in later
+when the market verdict is known.
 """
 
-import json
-import os
-import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import select, update, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-DEFAULT_DB_PATH = os.environ.get("DATABASE_URL", "sqlite:///world_oracle.db")
-
-
-def _resolve_path(db_url: str) -> str:
-    """Convert DATABASE_URL format to file path."""
-    if db_url.startswith("sqlite:///"):
-        return db_url[len("sqlite:///"):]
-    return db_url
+from db.models import OracleCall, SignalLog
+from db.engine import AsyncSessionLocal, init_db
 
 
 class SignalStore:
     """
-    SQLite-backed store for oracle calls.
-    Every query, response, and eventual outcome is persisted.
+    Async database-backed store for oracle calls.
+    Uses SQLAlchemy 2.0 async sessions.
     """
 
-    def __init__(self, db_path: Optional[str] = None):
-        self.db_path = _resolve_path(db_path or DEFAULT_DB_PATH)
-        self._init_db()
+    def __init__(self):
+        self._initialized = False
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
-        return conn
+    async def ensure_tables(self):
+        """Create tables if they don't exist. Idempotent."""
+        if not self._initialized:
+            await init_db()
+            self._initialized = True
 
-    def _init_db(self):
-        """Create tables if they don't exist."""
-        conn = self._connect()
-        try:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS oracle_calls (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    query       TEXT NOT NULL,
-                    domain      TEXT NOT NULL,
-                    timestamp   TEXT NOT NULL,
-                    status      TEXT NOT NULL,
-                    direction   TEXT,
-                    confidence  REAL,
-                    response    TEXT NOT NULL,
-                    outcome     TEXT,
-                    outcome_at  TEXT,
-                    notes       TEXT
-                );
+    async def log_call(self, query: str, domain: str, response: dict) -> int:
+        """Log an oracle call. Returns the row ID."""
+        await self.ensure_tables()
 
-                CREATE INDEX IF NOT EXISTS idx_oracle_calls_domain
-                    ON oracle_calls(domain);
-                CREATE INDEX IF NOT EXISTS idx_oracle_calls_timestamp
-                    ON oracle_calls(timestamp);
-                CREATE INDEX IF NOT EXISTS idx_oracle_calls_status
-                    ON oracle_calls(status);
-            """)
-            conn.commit()
-        finally:
-            conn.close()
-
-    def log_call(self, query: str, domain: str, response: dict) -> int:
-        """
-        Log an oracle call. Returns the row ID.
-        Called automatically by the API after every query.
-        """
-        now = datetime.now(timezone.utc).isoformat()
         status = response.get("status", "UNKNOWN")
-
-        # Extract direction and confidence from response
         view = response.get("view", {})
+
         direction = view.get("direction") if status == "ORACLE_RESPONSE" else None
         confidence = view.get("confidence") if status == "ORACLE_RESPONSE" else response.get("confidence")
+        band = view.get("band", "") if status == "ORACLE_RESPONSE" else ""
+        alignment = view.get("alignment") if status == "ORACLE_RESPONSE" else None
+        thesis = view.get("thesis", "") if status == "ORACLE_RESPONSE" else ""
+        invalidators = response.get("risk", {}).get("invalidators", []) if status == "ORACLE_RESPONSE" else []
 
-        conn = self._connect()
-        try:
-            cursor = conn.execute(
-                """INSERT INTO oracle_calls
-                   (query, domain, timestamp, status, direction, confidence, response)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (query, domain, now, status, direction, confidence, json.dumps(response)),
+        # Parse band
+        band_low = band_high = None
+        if band and isinstance(band, str):
+            try:
+                parts = band.replace("\u2013", "-").replace("–", "-").split("-")
+                if len(parts) == 2:
+                    band_low = float(parts[0].strip())
+                    band_high = float(parts[1].strip())
+            except (ValueError, IndexError):
+                pass
+
+        row = OracleCall(
+            query=query,
+            domain=domain,
+            status=status,
+            direction=direction,
+            confidence=confidence,
+            band_low=band_low,
+            band_high=band_high,
+            alignment=alignment,
+            thesis=thesis,
+            invalidators=invalidators,
+            full_response=response,
+        )
+
+        async with AsyncSessionLocal() as session:
+            session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return row.id
+
+    async def log_signals(self, call_id: int, signals: list) -> None:
+        """Log individual agent signals for a call."""
+        await self.ensure_tables()
+
+        rows = []
+        for s in signals:
+            rows.append(SignalLog(
+                call_id=call_id,
+                agent_id=getattr(s, 'agent_id', str(s.get('agent', ''))),
+                domain=getattr(s, 'domain_path', str(s.get('domain', ''))),
+                direction=getattr(s, 'direction', s.get('direction', '')).value
+                    if hasattr(getattr(s, 'direction', None), 'value')
+                    else str(s.get('direction', '')),
+                confidence=getattr(s, 'confidence', s.get('confidence', 0)),
+                temporal_layer=getattr(s, 'temporal_layer', s.get('layer', '')).value
+                    if hasattr(getattr(s, 'temporal_layer', None), 'value')
+                    else str(s.get('layer', '')),
+                reasoning=getattr(s, 'reasoning', s.get('reasoning', ''))[:500],
+                decay_triggers=getattr(s, 'decay_triggers', s.get('decay_triggers', [])),
+            ))
+
+        async with AsyncSessionLocal() as session:
+            session.add_all(rows)
+            await session.commit()
+
+    async def record_outcome(self, call_id: int, outcome: str, notes: str = "") -> bool:
+        """Record the market outcome for a past oracle call."""
+        await self.ensure_tables()
+        now = datetime.now(timezone.utc)
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                update(OracleCall)
+                .where(OracleCall.id == call_id)
+                .values(outcome=outcome, outcome_notes=notes, resolved_at=now)
             )
-            conn.commit()
-            return cursor.lastrowid
-        finally:
-            conn.close()
+            await session.commit()
+            return result.rowcount > 0
 
-    def record_outcome(self, call_id: int, outcome: str, notes: str = "") -> bool:
-        """
-        Record the market outcome for a past oracle call.
-        outcome: "correct", "incorrect", "partial", "inconclusive"
-        This is what builds the track record.
-        """
-        now = datetime.now(timezone.utc).isoformat()
-        conn = self._connect()
-        try:
-            cursor = conn.execute(
-                """UPDATE oracle_calls
-                   SET outcome = ?, outcome_at = ?, notes = ?
-                   WHERE id = ?""",
-                (outcome, now, notes, call_id),
-            )
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    async def get_history(self, limit: int = 50, domain: Optional[str] = None) -> list[dict]:
+        """Get recent oracle calls, most recent first."""
+        await self.ensure_tables()
 
-    def get_history(self, limit: int = 50, domain: Optional[str] = None) -> list[dict]:
-        """
-        Get recent oracle calls. Ordered by most recent first.
-        Optionally filter by domain.
-        """
-        conn = self._connect()
-        try:
+        async with AsyncSessionLocal() as session:
+            stmt = select(OracleCall).order_by(OracleCall.created_at.desc()).limit(limit)
             if domain:
-                rows = conn.execute(
-                    """SELECT id, query, domain, timestamp, status, direction,
-                              confidence, outcome, outcome_at, notes
-                       FROM oracle_calls
-                       WHERE domain LIKE ?
-                       ORDER BY timestamp DESC
-                       LIMIT ?""",
-                    (f"{domain}%", limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """SELECT id, query, domain, timestamp, status, direction,
-                              confidence, outcome, outcome_at, notes
-                       FROM oracle_calls
-                       ORDER BY timestamp DESC
-                       LIMIT ?""",
-                    (limit,),
-                ).fetchall()
+                stmt = stmt.where(OracleCall.domain.like(f"{domain}%"))
 
-            return [dict(row) for row in rows]
-        finally:
-            conn.close()
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
 
-    def get_call(self, call_id: int) -> Optional[dict]:
-        """Get a single oracle call by ID, including full response."""
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT * FROM oracle_calls WHERE id = ?", (call_id,)
-            ).fetchone()
-            if not row:
+            return [
+                {
+                    "id": r.id,
+                    "query": r.query,
+                    "domain": r.domain,
+                    "timestamp": r.created_at.isoformat() if r.created_at else None,
+                    "status": r.status,
+                    "direction": r.direction,
+                    "confidence": r.confidence,
+                    "outcome": r.outcome,
+                    "outcome_at": r.resolved_at.isoformat() if r.resolved_at else None,
+                    "notes": r.outcome_notes,
+                }
+                for r in rows
+            ]
+
+    async def get_call(self, call_id: int) -> Optional[dict]:
+        """Get a single oracle call by ID."""
+        await self.ensure_tables()
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                select(OracleCall).where(OracleCall.id == call_id)
+            )
+            r = result.scalar_one_or_none()
+            if not r:
                 return None
-            result = dict(row)
-            result["response"] = json.loads(result["response"])
-            return result
-        finally:
-            conn.close()
 
-    def get_track_record(self, domain: Optional[str] = None) -> dict:
-        """
-        Aggregate track record statistics.
-        Returns win rate, total calls, outcomes breakdown.
-        """
-        conn = self._connect()
-        try:
-            base_query = "SELECT status, direction, confidence, outcome FROM oracle_calls"
-            params = []
+            return {
+                "id": r.id,
+                "query": r.query,
+                "domain": r.domain,
+                "timestamp": r.created_at.isoformat() if r.created_at else None,
+                "status": r.status,
+                "direction": r.direction,
+                "confidence": r.confidence,
+                "alignment": r.alignment,
+                "thesis": r.thesis,
+                "outcome": r.outcome,
+                "outcome_at": r.resolved_at.isoformat() if r.resolved_at else None,
+                "notes": r.outcome_notes,
+                "response": r.full_response,
+            }
 
+    async def get_track_record(self, domain: Optional[str] = None) -> dict:
+        """Aggregate track record statistics."""
+        await self.ensure_tables()
+
+        async with AsyncSessionLocal() as session:
+            stmt = select(OracleCall)
             if domain:
-                base_query += " WHERE domain LIKE ?"
-                params.append(f"{domain}%")
-
-            rows = conn.execute(base_query, params).fetchall()
+                stmt = stmt.where(OracleCall.domain.like(f"{domain}%"))
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
 
             total = len(rows)
-            responded = sum(1 for r in rows if r["status"] == "ORACLE_RESPONSE")
-            abstained = sum(1 for r in rows if r["status"] == "INSUFFICIENT_SIGNAL")
-
+            responded = sum(1 for r in rows if r.status == "ORACLE_RESPONSE")
+            abstained = sum(1 for r in rows if r.status == "INSUFFICIENT_SIGNAL")
             outcomes = {}
             for r in rows:
-                if r["outcome"]:
-                    outcomes[r["outcome"]] = outcomes.get(r["outcome"], 0) + 1
-
+                if r.outcome:
+                    outcomes[r.outcome] = outcomes.get(r.outcome, 0) + 1
             scored = sum(outcomes.values())
             correct = outcomes.get("correct", 0)
             win_rate = (correct / scored) if scored > 0 else None
@@ -201,14 +204,11 @@ class SignalStore:
                 "outcomes": outcomes,
                 "win_rate": round(win_rate, 3) if win_rate is not None else None,
             }
-        finally:
-            conn.close()
 
-    def clear(self):
+    async def clear(self):
         """Clear all data. For testing only."""
-        conn = self._connect()
-        try:
-            conn.execute("DELETE FROM oracle_calls")
-            conn.commit()
-        finally:
-            conn.close()
+        await self.ensure_tables()
+        async with AsyncSessionLocal() as session:
+            await session.execute(OracleCall.__table__.delete())
+            await session.execute(SignalLog.__table__.delete())
+            await session.commit()

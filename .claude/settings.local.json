@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(start:*)"
+      "Bash(start:*)",
+      "Bash(gh run:*)",
+      "Bash(gh secret:*)",
+      "Bash(RAILWAY_TOKEN=daf4d37e-38e3-41f1-a244-00c63b824130 railway add --plugin postgresql 2>&1)",
+      "Bash(RAILWAY_TOKEN=daf4d37e-38e3-41f1-a244-00c63b824130 railway add 2>&1 || true)",
+      "Bash(RAILWAY_TOKEN=daf4d37e-38e3-41f1-a244-00c63b824130 railway add --database postgres 2>&1)",
+      "Bash(pip install:*)",
+      "Bash(DATABASE_URL=sqlite+aiosqlite:///test_oracle.db python -m pytest tests/ -v --tb=short 2>&1 | tail -30)",
+      "Bash(DATABASE_URL=sqlite+aiosqlite:///test_oracle.db python -m pytest tests/ -v --tb=short 2>&1 | tail -10)"
     ]
   }
 }

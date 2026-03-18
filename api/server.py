@@ -111,6 +111,11 @@ def _init_oracle():
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     _init_oracle()
+
+    # Init database tables
+    await signal_store.ensure_tables()
+    logger.info("Database initialised")
+
     logger.info("Oracle initialised — %d modules registered", len(registry.list_modules()))
 
     # Run initial health check
@@ -131,6 +136,9 @@ async def lifespan(app: FastAPI):
         await health_task
     except asyncio.CancelledError:
         pass
+
+    from db.engine import close_db
+    await close_db()
 
 
 # ─── App ─────────────────────────────────────────────────────────────────────
@@ -206,7 +214,7 @@ async def oracle_query(req: QueryRequest):
             "domain": decomposed.domain_path,
             "oracle_says": f"No module registered for domain '{decomposed.domain_path}'.",
         }
-        signal_store.log_call(req.query, decomposed.domain_path, result)
+        await signal_store.log_call(req.query, decomposed.domain_path, result)
         return result
 
     # Module execution
@@ -230,7 +238,9 @@ async def oracle_query(req: QueryRequest):
     )
 
     # Log to signal store
-    call_id = signal_store.log_call(req.query, decomposed.domain_path, result)
+    call_id = await signal_store.log_call(req.query, decomposed.domain_path, result)
+    # Log individual signals
+    await signal_store.log_signals(call_id, module_response.signals)
     result["call_id"] = call_id
 
     return result
@@ -264,8 +274,8 @@ async def list_modules():
 @app.get("/api/history")
 async def get_history(limit: int = 50, domain: Optional[str] = None):
     """Last N oracle calls with outcomes."""
-    history = signal_store.get_history(limit=min(limit, 200), domain=domain)
-    track_record = signal_store.get_track_record(domain=domain)
+    history = await signal_store.get_history(limit=min(limit, 200), domain=domain)
+    track_record = await signal_store.get_track_record(domain=domain)
     return {
         "calls": history,
         "track_record": track_record,
@@ -275,7 +285,7 @@ async def get_history(limit: int = 50, domain: Optional[str] = None):
 @app.get("/api/history/{call_id}")
 async def get_call(call_id: int):
     """Get a single oracle call by ID, including full response."""
-    call = signal_store.get_call(call_id)
+    call = await signal_store.get_call(call_id)
     if not call:
         raise HTTPException(status_code=404, detail="Call not found")
     return call
@@ -284,11 +294,11 @@ async def get_call(call_id: int):
 @app.post("/api/history/{call_id}/outcome")
 async def record_outcome(call_id: int, req: OutcomeRequest):
     """Record the market outcome for a past oracle call."""
-    call = signal_store.get_call(call_id)
+    call = await signal_store.get_call(call_id)
     if not call:
         raise HTTPException(status_code=404, detail="Call not found")
 
-    success = signal_store.record_outcome(call_id, req.outcome, req.notes)
+    success = await signal_store.record_outcome(call_id, req.outcome, req.notes)
     if not success:
         raise HTTPException(status_code=500, detail="Failed to record outcome")
 
