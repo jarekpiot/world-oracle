@@ -796,9 +796,32 @@ function parseAPIResponse(data){
     devils_advocate:risk.devils_advocate||data.devils_advocate||'',
   };
 
-  // Build signals from reasoning_trace (layer-grouped) + evidence.sources (agent details)
+  // Build per-agent signal data by combining:
+  // 1. reasoning_trace (layer + grouped reasoning)
+  // 2. evidence.supporting_signals (per-agent detail strings)
+  // 3. evidence.sources (feed info)
   const layerMap={structural:'t3',strategic:'t2',tactical:'t1',realtime:'t0'};
   const sources=evidence.sources||[];
+  const supportingSignals=evidence.supporting_signals||[];
+
+  // Build a lookup of per-agent detail from supporting_signals
+  // Format: "agent_name: detail text (confidence)"
+  const agentDetails={};
+  supportingSignals.forEach(s=>{
+    const colonIdx=s.indexOf(':');
+    if(colonIdx>0){
+      const agentName=s.substring(0,colonIdx).trim();
+      const detail=s.substring(colonIdx+1).trim();
+      agentDetails[agentName]=detail;
+    }
+  });
+
+  // Known agent-specific directions based on their role
+  // (the API groups agents by layer with ONE direction, but we can infer per-agent)
+  const agentDirectionHints={
+    'shipping_agent':'unknown',       // always unknown — no feed
+    'breaking_event_agent':'neutral',  // neutral unless GDELT sees spike
+  };
 
   for(const [layerKey,layerData] of Object.entries(trace)){
     if(!layerData||!layerData.agents)continue;
@@ -807,27 +830,55 @@ function parseAPIResponse(data){
     const layerConf=layerData.confidence||0.5;
     const reasoning=layerData.reasoning||'';
 
+    // Split reasoning by semicolons — each part maps to one agent
+    const reasonParts=reasoning.split(';').map(r=>r.trim()).filter(Boolean);
+
     layerData.agents.forEach((agentId,idx)=>{
-      // Find source info
       const source=sources.find(s=>s.agent===agentId)||{};
-      // Split reasoning by semicolons to assign per-agent
-      const reasonParts=reasoning.split(';').map(r=>r.trim()).filter(Boolean);
       const agentReasoning=reasonParts[idx]||reasonParts[0]||'';
+
+      // Try to extract per-agent direction from the reasoning text
+      let agentDir=layerDir;
+      let agentConf=layerConf;
+      const detail=agentDetails[agentId]||'';
+      const reasonLower=(agentReasoning+' '+detail).toLowerCase();
+
+      // Infer direction from keywords in the agent's own reasoning
+      if(agentDirectionHints[agentId]){
+        agentDir=agentDirectionHints[agentId];
+        agentConf=0.25;
+      } else if(reasonLower.includes('bullish')||reasonLower.includes('draw')||reasonLower.includes('squeeze')||reasonLower.includes('escalation')||reasonLower.includes('spike')){
+        agentDir='bullish';
+      } else if(reasonLower.includes('bearish')||reasonLower.includes('build')||reasonLower.includes('glut')||reasonLower.includes('calm')||reasonLower.includes('compressing')){
+        agentDir='bearish';
+      } else if(reasonLower.includes('unavailable')||reasonLower.includes('not connected')||reasonLower.includes('unknown')){
+        agentDir='unknown';
+        agentConf=0.25;
+      } else if(reasonLower.includes('neutral')||reasonLower.includes('balanced')||reasonLower.includes('flat')){
+        agentDir='neutral';
+      }
+
+      // Extract confidence from detail string if present (e.g. "0.85 confidence")
+      const confMatch=(agentReasoning+' '+detail).match(/(\d\.\d+)\s*confidence/);
+      if(confMatch) agentConf=parseFloat(confMatch[1]);
+      // Also try parenthesized confidence like "(0.72 confidence)"
+      const confMatch2=(agentReasoning+' '+detail).match(/\((\d\.\d+)/);
+      if(confMatch2) agentConf=parseFloat(confMatch2[1]);
 
       result.signals.push({
         agent:agentId,
-        direction:layerDir,
-        confidence:layerConf,
+        direction:agentDir,
+        confidence:agentConf,
         layer:layer,
         label:agentId.replace(/_/g,' ').replace(/agent$/,'').trim(),
-        reasoning:agentReasoning,
+        reasoning:agentReasoning||detail||'No detail available',
         feed:source.feed||'',
         decay_triggers:[],
       });
     });
   }
 
-  // If no signals from trace, fall back to sources list
+  // Fallback if no signals parsed
   if(result.signals.length===0&&sources.length>0){
     sources.forEach(s=>{
       result.signals.push({
