@@ -128,13 +128,15 @@ class CommoditiesModule(OracleModule):
         # Agents — all 9 wired up (T0 through T3)
         self.price_agent = PriceAgent(self.price_feed)
         self.breaking_agent = BreakingEventAgent(self.gdelt_feed)
+        # LLM reasoning: only inventory + geopolitical (highest value per cost)
+        # Others use threshold fallback (no client) to save API credits
         self.inventory_agent = InventoryAgent(self.eia_feed, client=client)
         self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed, client=client)
-        self.weather_agent = WeatherAgent(self.noaa_feed, client=client)
+        self.weather_agent = WeatherAgent(self.noaa_feed)          # threshold fallback
         self.shipping_agent = ShippingAgent(self.baltic_feed)
         self.positioning_agent = PositioningAgent(self.cot_feed)
-        self.narrative_agent = NarrativeAgent(self.gdelt_feed, client=client)
-        self.structural_agent = StructuralAgent(client=client)
+        self.narrative_agent = NarrativeAgent(self.gdelt_feed)     # threshold fallback
+        self.structural_agent = StructuralAgent()                  # curated views fallback
 
     async def handle(self, query: DecomposedQuery) -> ModuleResponse:
         """
