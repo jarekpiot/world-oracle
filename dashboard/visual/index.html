@@ -6,9 +6,9 @@
 <title>World Oracle</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#020d18;font-family:'Helvetica Neue',Arial,sans-serif}
+html,body{width:100%;height:100%;overflow:hidden;background:#020d18;font-family:'Helvetica Neue',Arial,sans-serif;-webkit-tap-highlight-color:transparent}
 #wo-wrap{display:flex;width:100%;height:100%}
-#wo{width:70%;height:100%;background:#020d18;position:relative;cursor:default;flex-shrink:0}
+#wo{flex:1;height:100%;background:#020d18;position:relative;cursor:default;min-width:0;transition:flex 0.4s ease}
 canvas{display:block;position:absolute;top:0;left:0}
 #globe3d{z-index:1;pointer-events:none}
 #c{z-index:2}
@@ -109,6 +109,45 @@ canvas{display:block;position:absolute;top:0;left:0}
 .sp-risk-item{font:400 9px/1.6 sans-serif;color:#6a8a9a;margin-bottom:3px;padding-left:10px;position:relative}
 .sp-risk-item::before{content:'\2022';position:absolute;left:0;color:#3a5a6a}
 .sp-devil{font:400 9px/1.5 sans-serif;color:#8a6a5a;margin-top:8px;font-style:italic}
+
+/* ── MOBILE RESPONSIVE ── */
+@media(max-width:768px){
+  #wo-wrap{flex-direction:column}
+  #wo{flex:1;width:100%!important;height:60%!important;min-height:280px}
+  #state-panel{
+    width:100%!important;min-width:0!important;height:40%;
+    border-left:none;border-top:0.5px solid #0a3a4a;
+    transition:height 0.4s ease,opacity 0.8s ease;
+  }
+  #state-panel.collapsed{height:0;overflow:hidden;border-top:none}
+  #panel-toggle{
+    position:fixed;left:50%;bottom:40%;transform:translateX(-50%);
+    width:48px;height:24px;border-radius:6px 6px 0 0;border-bottom:none;
+    right:auto!important;top:auto!important;
+  }
+  #state-panel.collapsed~#panel-toggle,
+  .panel-collapsed #panel-toggle{bottom:0}
+  #top{top:10px}
+  #wconf{font-size:32px}
+  #wview{font-size:10px}
+  #legend{display:none}
+  #ticker{bottom:40px;font-size:9px}
+  #ctrls{bottom:10px;gap:4px}
+  .cb{font-size:8px;padding:4px 10px}
+  .sp-assets{padding:6px 10px 4px}
+  .sp-asset{font-size:8px;padding:3px 8px}
+  .sp-section{padding:10px 12px 8px}
+  .sp-direction{font-size:22px}
+  .sp-conf-big{font-size:28px}
+  .sp-detail{display:none!important}
+}
+
+@media(max-width:480px){
+  #wo{height:50%!important}
+  #state-panel{height:50%}
+  #wconf{font-size:26px}
+  .cb{font-size:7px;padding:3px 8px}
+}
 </style>
 </head>
 <body>
@@ -292,6 +331,28 @@ wrap.addEventListener('wheel',function(e){
   RINGS.forEach((r,i)=>{r.r=BASE()*(i===0?1.52:i===1?1.27:i===2?1.0:i===3?0.73:0.49)});
   if(globeCamera){globeCamera.position.z=5/zoomLevel;globeCamera.updateProjectionMatrix();}
 },{passive:false});
+
+// Pinch-to-zoom for mobile
+var lastPinchDist=0;
+wrap.addEventListener('touchstart',function(e){
+  if(e.touches.length===2){
+    lastPinchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  }
+},{passive:true});
+wrap.addEventListener('touchmove',function(e){
+  if(e.touches.length===2){
+    const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    if(lastPinchDist>0){
+      const delta=(dist-lastPinchDist)*0.003;
+      zoomLevel=Math.max(0.4,Math.min(1.6,zoomLevel+delta));
+      RINGS.forEach((r,i)=>{r.r=BASE()*(i===0?1.52:i===1?1.27:i===2?1.0:i===3?0.73:0.49)});
+      if(globeCamera){globeCamera.position.z=5/zoomLevel;globeCamera.updateProjectionMatrix();}
+    }
+    lastPinchDist=dist;
+    e.preventDefault();
+  }
+},{passive:false});
+wrap.addEventListener('touchend',function(){lastPinchDist=0},{passive:true});
 
 function drawStars(){
   bgX.clearRect(0,0,W,H);bgX.fillStyle='#020d18';bgX.fillRect(0,0,W,H);
@@ -999,9 +1060,17 @@ document.getElementById('panel-toggle').addEventListener('click',function(){
   const panel=document.getElementById('state-panel');
   const btn=this;
   const collapsing=!panel.classList.contains('collapsed');
+  const isMobile=window.innerWidth<=768;
   panel.classList.toggle('collapsed');
-  btn.innerHTML=collapsing?'&rsaquo;':'&lsaquo;';
-  btn.style.right=collapsing?'0':'30%';
+  if(isMobile){
+    // Mobile: vertical toggle
+    btn.innerHTML=collapsing?'&and;':'&or;';
+  }else{
+    // Desktop: horizontal toggle
+    btn.innerHTML=collapsing?'&rsaquo;':'&lsaquo;';
+    btn.style.right=collapsing?'0':'';
+  }
+  // Resize after animation completes — orb fills the space
   setTimeout(resize,450);
 });
 
