@@ -7,7 +7,8 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden;background:#020d18;font-family:'Helvetica Neue',Arial,sans-serif}
-#wo{width:100%;height:100%;background:#020d18;position:relative;cursor:default}
+#wo-wrap{display:flex;width:100%;height:100%}
+#wo{width:70%;height:100%;background:#020d18;position:relative;cursor:default;flex-shrink:0}
 canvas{display:block;position:absolute;top:0;left:0}
 #globe3d{z-index:1;pointer-events:none}
 #c{z-index:2}
@@ -26,9 +27,58 @@ canvas{display:block;position:absolute;top:0;left:0}
 .le:hover{opacity:1}
 .ld{width:6px;height:6px;border-radius:50%}
 #tooltip{position:absolute;background:rgba(2,13,24,0.95);border:0.5px solid #0a3a4a;border-radius:8px;padding:9px 13px;font:400 11px/1.6 sans-serif;color:#a8d8f0;display:none;pointer-events:none;max-width:220px;z-index:20}
+
+/* ── STATE PANEL ── */
+#state-panel{
+  width:30%;height:100%;background:rgba(2,13,24,0.92);border-left:0.5px solid #0a3a4a;
+  overflow-y:auto;overflow-x:hidden;flex-shrink:0;
+  font-family:'Helvetica Neue',Arial,sans-serif;color:#8ab8d0;
+  opacity:0;transition:opacity 0.8s ease;
+  scrollbar-width:thin;scrollbar-color:#0a3a4a transparent;
+}
+#state-panel.visible{opacity:1}
+#state-panel::-webkit-scrollbar{width:4px}
+#state-panel::-webkit-scrollbar-track{background:transparent}
+#state-panel::-webkit-scrollbar-thumb{background:#0a3a4a;border-radius:2px}
+
+.sp-section{padding:16px 18px 10px 18px;border-bottom:0.5px solid rgba(10,58,74,0.4)}
+.sp-label{font:500 9px/1 sans-serif;color:#2a5a7a;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.sp-live{font:500 8px/1 sans-serif;letter-spacing:0.12em;padding:2px 7px;border-radius:8px;text-transform:uppercase}
+.sp-live.live{color:#22dd99;border:0.5px solid rgba(34,221,153,0.3)}
+.sp-live.mock{color:#886611;border:0.5px solid rgba(136,102,17,0.3)}
+
+.sp-direction{font:300 28px/1 sans-serif;letter-spacing:0.06em;margin-bottom:8px;display:flex;align-items:baseline;gap:8px}
+.sp-direction .arrow{font-weight:400}
+.sp-conf-big{font:200 38px/1 sans-serif;letter-spacing:0.04em;margin-bottom:6px}
+.sp-row{display:flex;align-items:center;justify-content:space-between;font:400 10px/1.5 sans-serif;color:#5a8aa0;margin-bottom:4px}
+.sp-row .val{color:#8ab8d0;font-weight:500}
+.sp-thesis{font:400 10px/1.5 sans-serif;color:#6a9ab0;margin-top:8px;font-style:italic;line-height:1.5}
+.sp-band{height:2px;background:#0a2a3a;border-radius:1px;margin:4px 0 2px 0;position:relative;overflow:visible}
+.sp-band-fill{height:100%;border-radius:1px;transition:width 0.6s ease}
+.sp-band-markers{position:relative;height:8px}
+.sp-band-lo,.sp-band-hi{position:absolute;top:0;font:400 8px/1 sans-serif;color:#3a6a7a}
+.sp-band-lo{left:0}.sp-band-hi{right:0}
+
+/* Signal rows */
+.sp-layer-header{font:500 8px/1 sans-serif;color:#2a5a7a;letter-spacing:0.15em;text-transform:uppercase;margin:10px 0 6px 0;padding-top:4px}
+.sp-layer-header:first-child{margin-top:0}
+.sp-signal{display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer;transition:background 0.2s;border-radius:4px;padding-left:4px;margin-left:-4px;padding-right:4px}
+.sp-signal:hover{background:rgba(26,106,138,0.08)}
+.sp-sig-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.sp-sig-arrow{font:400 9px/1 sans-serif;width:10px;flex-shrink:0;text-align:center}
+.sp-sig-name{font:400 9px/1 sans-serif;color:#7aabbf;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sp-sig-bar-wrap{width:48px;height:2px;background:#0a2a3a;border-radius:1px;flex-shrink:0;overflow:hidden}
+.sp-sig-bar{height:100%;border-radius:1px;transition:width 0.6s ease}
+.sp-sig-conf{font:400 8px/1 sans-serif;color:#4a7a8a;width:24px;text-align:right;flex-shrink:0}
+
+/* Risk section */
+.sp-risk-item{font:400 9px/1.6 sans-serif;color:#6a8a9a;margin-bottom:3px;padding-left:10px;position:relative}
+.sp-risk-item::before{content:'\2022';position:absolute;left:0;color:#3a5a6a}
+.sp-devil{font:400 9px/1.5 sans-serif;color:#8a6a5a;margin-top:8px;font-style:italic}
 </style>
 </head>
 <body>
+<div id="wo-wrap">
 <div id="wo">
 <canvas id="bg"></canvas>
 <canvas id="globe3d"></canvas>
@@ -58,15 +108,48 @@ canvas{display:block;position:absolute;top:0;left:0}
 </div>
 </div>
 
+<!-- STATE PANEL -->
+<div id="state-panel">
+  <div class="sp-section" id="sp-oracle">
+    <div class="sp-label">
+      <span>Oracle View</span>
+      <span class="sp-live mock" id="sp-live-badge">MOCK</span>
+    </div>
+    <div class="sp-direction" id="sp-direction">
+      <span class="arrow" id="sp-dir-arrow">&#9473;</span>
+      <span id="sp-dir-word">NEUTRAL</span>
+    </div>
+    <div class="sp-conf-big" id="sp-conf-big">&mdash;</div>
+    <div class="sp-row"><span>Confidence band</span><span class="val" id="sp-band-text">--</span></div>
+    <div class="sp-band"><div class="sp-band-fill" id="sp-band-fill" style="width:0%;background:#4a7a8a"></div></div>
+    <div class="sp-band-markers"><span class="sp-band-lo" id="sp-band-lo">--</span><span class="sp-band-hi" id="sp-band-hi">--</span></div>
+    <div class="sp-row"><span>Alignment</span><span class="val" id="sp-align">--</span></div>
+    <div class="sp-thesis" id="sp-thesis">Waiting for oracle...</div>
+  </div>
+
+  <div class="sp-section" id="sp-signals">
+    <div class="sp-label">Signal Breakdown</div>
+    <div id="sp-signals-list"></div>
+  </div>
+
+  <div class="sp-section" id="sp-risk">
+    <div class="sp-label">Risk</div>
+    <div id="sp-invalidators"></div>
+    <div class="sp-devil" id="sp-devil"></div>
+  </div>
+</div>
+</div>
+
 <script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
 <script>
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // STATE
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 const API = 'https://world-oracle-production.up.railway.app';
 let oracleConf=0.74, oracleDir='bearish', oracleAlign=0.667;
 let feedsHealthy=3, feedsTotal=10, signalCount=15;
 let t=0, paused=false, warMode=false, fullAlign=false;
+let panelIsLive=false;
 
 const DCOL={bullish:'#22dd99',bearish:'#ff5533',neutral:'#888880',unknown:'#333330'};
 const DLAB={bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'};
@@ -89,14 +172,18 @@ const NODES=[
   {ri:4,ang:3.4, lab:'crypto narrative',     dir:'neutral', conf:0.40, ag:'narrative'},
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
+// Node glow tracking for panel click interaction
+let glowNode=null, glowTimer=0;
+
+// =====================================================================
 // CANVAS 2D SETUP
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 const bgC=document.getElementById('bg'), bgX=bgC.getContext('2d');
 const c=document.getElementById('c'), ctx=c.getContext('2d');
 const wrap=document.getElementById('wo');
 let W,H,cx,cy;
 const DPR=Math.min(devicePixelRatio,2);
+var zoomLevel=1.0; // scroll zoom
 
 function resize(){
   const r=wrap.getBoundingClientRect();
@@ -109,7 +196,16 @@ function resize(){
   if(globeRenderer){globeRenderer.setSize(W,H);globeCamera.aspect=W/H;globeCamera.updateProjectionMatrix();}
   RINGS.forEach((r,i)=>{r.r=BASE()*(i===0?1.52:i===1?1.27:i===2?1.0:i===3?0.73:0.49)});
 }
-function BASE(){return Math.min(W,H)*0.35}
+function BASE(){return Math.min(W,H)*0.35*zoomLevel}
+
+// Zoom with scroll wheel
+wrap.addEventListener('wheel',function(e){
+  e.preventDefault();
+  const delta=e.deltaY>0?-0.05:0.05;
+  zoomLevel=Math.max(0.4,Math.min(1.6,zoomLevel+delta));
+  RINGS.forEach((r,i)=>{r.r=BASE()*(i===0?1.52:i===1?1.27:i===2?1.0:i===3?0.73:0.49)});
+  if(globeCamera){globeCamera.position.z=5/zoomLevel;globeCamera.updateProjectionMatrix();}
+},{passive:false});
 
 function drawStars(){
   bgX.clearRect(0,0,W,H);bgX.fillStyle='#020d18';bgX.fillRect(0,0,W,H);
@@ -119,7 +215,6 @@ function drawStars(){
     bgX.beginPath();bgX.arc(R()*W,R()*H,R()*1.2+0.15,0,Math.PI*2);
     bgX.fillStyle=`rgba(180,210,240,${R()*0.4+0.05})`;bgX.fill();
   }
-  // nebula wisps
   if(W>0&&H>0){
     for(let i=0;i<6;i++){
       const gx=R()*W,gy=R()*H,gr=80+R()*120;
@@ -132,28 +227,26 @@ function drawStars(){
     }
   }
 }
-// deferred — resize called after RINGS defined
 window.addEventListener('resize',resize);
 
-// ═══════════════════════════════════════════════════════════════════════════
-// THREE.JS — TRANSLUCENT HOLOGRAPHIC GLOBE
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
+// THREE.JS -- TRANSLUCENT HOLOGRAPHIC GLOBE
+// =====================================================================
 var globeRenderer=null,globeScene=null,globeCamera=null,globeMesh=null,glowMesh=null;
 
 function initGlobe(){
   const cv=document.getElementById('globe3d');
   globeRenderer=new THREE.WebGLRenderer({canvas:cv,alpha:true,antialias:true});
-  globeRenderer.setSize(W,H);
+  globeRenderer.setSize(W||400,H||400);
   globeRenderer.setPixelRatio(DPR);
   globeRenderer.setClearColor(0x000000,0);
 
   globeScene=new THREE.Scene();
-  globeCamera=new THREE.PerspectiveCamera(45,W/H,0.1,1000);
+  globeCamera=new THREE.PerspectiveCamera(45,(W||400)/(H||400),0.1,1000);
   globeCamera.position.z=5;
 
   const globeR=0.9;
 
-  // Wireframe sphere — the world as a grid
   const wireGeo=new THREE.IcosahedronGeometry(globeR,3);
   const wireMat=new THREE.MeshBasicMaterial({
     color:0x1a5a8a,wireframe:true,transparent:true,opacity:0.12
@@ -161,14 +254,12 @@ function initGlobe(){
   globeMesh=new THREE.Mesh(wireGeo,wireMat);
   globeScene.add(globeMesh);
 
-  // Solid inner sphere — very faint
   const innerGeo=new THREE.SphereGeometry(globeR*0.98,32,32);
   const innerMat=new THREE.MeshBasicMaterial({
     color:0x0a2040,transparent:true,opacity:0.3,side:THREE.FrontSide
   });
   globeScene.add(new THREE.Mesh(innerGeo,innerMat));
 
-  // Fresnel glow shell
   const glowGeo=new THREE.SphereGeometry(globeR*1.15,32,32);
   const glowMat=new THREE.ShaderMaterial({
     transparent:true,side:THREE.BackSide,depthWrite:false,
@@ -201,7 +292,6 @@ function initGlobe(){
   glowMesh=new THREE.Mesh(glowGeo,glowMat);
   globeScene.add(glowMesh);
 
-  // Latitude rings on globe — subtle grid lines
   [0.3,0.6,-0.3,-0.6].forEach(y=>{
     const ringR=Math.sqrt(globeR*globeR-y*y);
     const rGeo=new THREE.RingGeometry(ringR-0.003,ringR+0.003,64);
@@ -211,54 +301,44 @@ function initGlobe(){
     globeMesh.add(rm);
   });
 
-  // Equator ring — slightly brighter
   const eqGeo=new THREE.RingGeometry(globeR-0.004,globeR+0.004,64);
   const eqMat=new THREE.MeshBasicMaterial({color:0x3a8abb,transparent:true,opacity:0.15,side:THREE.DoubleSide});
   const eq=new THREE.Mesh(eqGeo,eqMat);
   eq.rotation.x=Math.PI/2;
   globeMesh.add(eq);
 
-  // Ambient light
   globeScene.add(new THREE.AmbientLight(0xffffff,0.3));
 }
 
 function updateGlobe(){
   if(!globeMesh)return;
-
-  // Slow rotation
   globeMesh.rotation.y+=0.0015;
   globeMesh.rotation.x=0.15*Math.sin(t*0.1);
-
-  // Breathing scale — synced with T0
-  const breathScale=1.0+0.02*Math.sin(t*Math.PI*4);// T0 heartbeat
+  const breathScale=1.0+0.02*Math.sin(t*Math.PI*4);
   globeMesh.scale.setScalar(breathScale);
-
-  // Color shifts with state
   const wireColor=fullAlign?0xcc8800:warMode?0x882233:0x1a5a8a;
   const glowColor=fullAlign?new THREE.Color(0xffaa00):warMode?new THREE.Color(0xff3322):new THREE.Color(0x1fb8ff);
   const wireOpacity=fullAlign?0.25:warMode?0.20:0.12;
-
   globeMesh.material.color.setHex(wireColor);
   globeMesh.material.opacity=wireOpacity;
   glowMesh.material.uniforms.glowColor.value.lerp(glowColor,0.02);
-
   globeRenderer.render(globeScene,globeCamera);
 }
 
 try{initGlobe()}catch(e){console.warn('WebGL not available:',e)}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// PULSE RINGS — emanate from core on heartbeat
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
+// PULSE RINGS
+// =====================================================================
 const PULSES=[];
 let lastBeat=0;
 function emitPulse(){
   PULSES.push({r:0,maxR:BASE()*0.5,life:1,col:fullAlign?'#ffaa00':warMode?'#ff3322':'#1fb8ff'});
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// AMBIENT PARTICLES — drifting in the void between rings
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
+// AMBIENT PARTICLES
+// =====================================================================
 const DUST=[];
 function initDust(){
   for(let i=0;i<60;i++){
@@ -274,9 +354,9 @@ function initDust(){
 }
 initDust();
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // RINGS
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 const RINGS=[
   {id:'war',r:0,col:'#cc3322',glow:'#ff5533',period:6.5,ph:0,  width:1.2,dash:[4,8]},
   {id:'t3', r:0,col:'#5544bb',glow:'#9988ee',period:8,  ph:1.3,width:1,  dash:[]},
@@ -284,7 +364,6 @@ const RINGS=[
   {id:'t1', r:0,col:'#886611',glow:'#ddaa33',period:2,  ph:0.7,width:1,  dash:[]},
   {id:'t0', r:0,col:'#114477',glow:'#44aaee',period:0.5,ph:3.1,width:1.5,dash:[]},
 ];
-// Initial resize — must be after RINGS defined
 resize();
 
 // Spark particles
@@ -297,9 +376,9 @@ function spark(x,y,dir,n=5){
   }
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // TICKER
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 const TICKS=[
   'the world breathes at four frequencies simultaneously',
   'T3 slow breath \u00b7 months to years \u00b7 structural cycles',
@@ -316,9 +395,9 @@ let ti=0;const tel=document.getElementById('ticker');
 function rotateTick(){tel.style.opacity=0;setTimeout(()=>{tel.textContent=TICKS[ti++%TICKS.length];tel.style.opacity=1},600)}
 rotateTick();setInterval(rotateTick,4500);
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // DRAW FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 function drawAurora(breath){
   [RINGS[0].r+30,RINGS[1].r+10,RINGS[2].r+10,RINGS[3].r+10].forEach((r,i)=>{
     ctx.beginPath();ctx.arc(cx,cy,r+breath*3,0,Math.PI*2);
@@ -334,7 +413,6 @@ function drawRings(){
     const baseA=warMode&&i===0?0.45:0.18;
     const a=baseA+0.12*((pulse+1)/2)*(fullAlign?1.8:1);
 
-    // outer glow
     ctx.beginPath();ctx.arc(cx,cy,pr+6,0,Math.PI*2);
     ctx.strokeStyle=ring.glow;ctx.lineWidth=5;ctx.globalAlpha=a*0.12;ctx.stroke();ctx.globalAlpha=1;
 
@@ -364,30 +442,35 @@ function drawNodes(){
     const col=DCOL[n.dir];
     const sz=3+n.conf*4.5;
 
+    // Check if this node should glow extra bright
+    const isGlowing=(glowNode===n&&glowTimer>0);
+    const glowMult=isGlowing?1+glowTimer*2:1;
+
     // halo
-    ctx.beginPath();ctx.arc(nx,ny,sz*3,0,Math.PI*2);
-    ctx.fillStyle=col;ctx.globalAlpha=0.06+0.03*Math.sin(t*2.5+n.ang);ctx.fill();ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(nx,ny,sz*3*glowMult,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.globalAlpha=(0.06+0.03*Math.sin(t*2.5+n.ang))*glowMult;ctx.fill();ctx.globalAlpha=1;
     // mid
-    ctx.beginPath();ctx.arc(nx,ny,sz*1.5,0,Math.PI*2);
-    ctx.fillStyle=col;ctx.globalAlpha=0.16+0.06*Math.sin(t*2+n.ang);ctx.fill();ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(nx,ny,sz*1.5*glowMult,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.globalAlpha=(0.16+0.06*Math.sin(t*2+n.ang))*glowMult;ctx.fill();ctx.globalAlpha=1;
     // core
-    ctx.beginPath();ctx.arc(nx,ny,sz,0,Math.PI*2);
-    ctx.fillStyle=col;ctx.globalAlpha=0.85+0.15*Math.sin(t*3+n.ang);ctx.fill();ctx.globalAlpha=1;
+    ctx.beginPath();ctx.arc(nx,ny,sz*(isGlowing?1.3:1),0,Math.PI*2);
+    ctx.fillStyle=col;ctx.globalAlpha=Math.min(1,(0.85+0.15*Math.sin(t*3+n.ang))*glowMult);ctx.fill();ctx.globalAlpha=1;
 
     // thread to center
     ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(nx,ny);
-    ctx.strokeStyle=col;ctx.lineWidth=0.3;
-    ctx.globalAlpha=Math.max(0,0.04*(fullAlign?3:1));ctx.stroke();ctx.globalAlpha=1;
+    ctx.strokeStyle=col;ctx.lineWidth=isGlowing?1:0.3;
+    ctx.globalAlpha=Math.max(0,(isGlowing?0.2:0.04)*(fullAlign?3:1));ctx.stroke();ctx.globalAlpha=1;
 
     if(Math.random()<0.0015)spark(nx,ny,n.dir);
   });
+
+  // Decay glow
+  if(glowTimer>0){glowTimer-=0.012;if(glowTimer<=0){glowNode=null;glowTimer=0}}
 }
 
 function drawPulses(){
-  // T0 heartbeat pulse emission
   const beatPhase=Math.sin(t*Math.PI*4);
   if(beatPhase>0.95&&t-lastBeat>0.25){lastBeat=t;emitPulse()}
-
   for(let i=PULSES.length-1;i>=0;i--){
     const p=PULSES[i];
     p.r+=(p.maxR-p.r)*0.03;
@@ -402,7 +485,6 @@ function drawDust(){
   DUST.forEach(d=>{
     d.x+=d.vx+Math.sin(t*0.3+d.drift)*0.02;
     d.y+=d.vy+Math.cos(t*0.25+d.drift)*0.02;
-    // wrap around
     const dx=d.x,dy=d.y,dist=Math.sqrt(dx*dx+dy*dy);
     if(dist>BASE()*1.7){d.x*=-0.5;d.y*=-0.5}
     ctx.beginPath();ctx.arc(cx+d.x,cy+d.y,d.size,0,Math.PI*2);
@@ -437,9 +519,9 @@ function updateUI(){
   document.getElementById('wstatus').textContent=`${signalCount} signals \u00b7 ${feedsHealthy}/${feedsTotal} feeds`;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // MAIN LOOP
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 function draw(){
   ctx.clearRect(0,0,W,H);
   const breath=0.5+0.5*Math.sin(t*0.55);
@@ -456,17 +538,17 @@ function draw(){
 }
 draw();
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // CONTROLS
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 document.getElementById('b-pause').addEventListener('click',function(){paused=!paused;this.classList.toggle('on',paused)});
 document.getElementById('b-war').addEventListener('click',function(){warMode=!warMode;fullAlign=false;this.classList.toggle('on',warMode);document.getElementById('b-align').classList.remove('on')});
 document.getElementById('b-align').addEventListener('click',function(){fullAlign=!fullAlign;warMode=false;this.classList.toggle('on',fullAlign);document.getElementById('b-war').classList.remove('on')});
 document.getElementById('b-live').addEventListener('click',function(){warMode=false;fullAlign=false;paused=false;document.getElementById('b-war').classList.remove('on');document.getElementById('b-align').classList.remove('on');document.getElementById('b-pause').classList.remove('on');poll()});
 
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 // TOOLTIP
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
 c.addEventListener('mousemove',function(e){
   const r=c.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
   const tip=document.getElementById('tooltip');let hit=false;
@@ -485,9 +567,229 @@ c.addEventListener('mousemove',function(e){
 });
 c.addEventListener('mouseleave',()=>{document.getElementById('tooltip').style.display='none'});
 
-// ═══════════════════════════════════════════════════════════════════════════
-// API
-// ═══════════════════════════════════════════════════════════════════════════
+// =====================================================================
+// STATE PANEL LOGIC
+// =====================================================================
+const LAYER_MAP={
+  0:{id:'t3',label:'T3 SLOW BREATH',   color:'#9988ee',dotColor:'#6655cc'},
+  1:{id:'t3',label:'T3 SLOW BREATH',   color:'#9988ee',dotColor:'#6655cc'},
+  2:{id:'t2',label:'T2 REGULAR BREATH', color:'#22cc88',dotColor:'#118866'},
+  3:{id:'t1',label:'T1 QUICK BREATH',   color:'#ddaa33',dotColor:'#996611'},
+  4:{id:'t0',label:'T0 HEARTBEAT',      color:'#44aaee',dotColor:'#115588'},
+};
+
+// Mock data that looks real
+const MOCK_DATA={
+  direction:'bearish',
+  confidence:0.74,
+  confidence_band:{low:0.68,high:0.81},
+  alignment_score:0.667,
+  thesis:'Supply disruption risk from Red Sea tensions outweighs demand softening, but conviction is moderate due to mixed T2 macro signals.',
+  signals:[
+    {agent:'geopolitical_risk',direction:'bearish',confidence:0.83,layer:'t3',label:'Red Sea blockade risk'},
+    {agent:'structural_cycle',direction:'neutral',confidence:0.55,layer:'t3',label:'Energy transition pressure'},
+    {agent:'commodity_super',direction:'bullish',confidence:0.60,layer:'t3',label:'Commodity supercycle'},
+    {agent:'usd_cycle',direction:'neutral',confidence:0.50,layer:'t3',label:'USD cycle positioning'},
+    {agent:'eia_inventory',direction:'bearish',confidence:0.85,layer:'t2',label:'EIA inventory build'},
+    {agent:'cftc_positioning',direction:'neutral',confidence:0.50,layer:'t2',label:'CFTC net positioning'},
+    {agent:'weather_impact',direction:'bullish',confidence:0.70,layer:'t2',label:'NOAA cold snap forecast'},
+    {agent:'shipping_index',direction:'unknown',confidence:0.25,layer:'t2',label:'Baltic Dry Index'},
+    {agent:'geopolitical_pulse',direction:'bearish',confidence:0.50,layer:'t1',label:'Geopolitical calm fading'},
+    {agent:'news_narrative',direction:'neutral',confidence:0.40,layer:'t1',label:'News narrative mixed'},
+    {agent:'weather_alert',direction:'bullish',confidence:0.70,layer:'t1',label:'Weather alert signals'},
+    {agent:'fx_sentiment',direction:'neutral',confidence:0.45,layer:'t1',label:'FX sentiment flat'},
+    {agent:'wti_price',direction:'bullish',confidence:0.70,layer:'t0',label:'WTI spot uptick'},
+    {agent:'crypto_narrative',direction:'neutral',confidence:0.40,layer:'t0',label:'Crypto correlation weak'},
+  ],
+  invalidators:[
+    'Ceasefire in Red Sea removes ~8% of risk premium',
+    'Surprise EIA draw would flip T2 inventory signal',
+    'USD strength above 106 DXY compresses commodity upside',
+  ],
+  devils_advocate:'If OPEC+ compliance weakens at the April meeting, the supply floor disappears and this bearish thesis strengthens materially.',
+};
+
+function parseAPIResponse(data){
+  // Adapt API response to panel format
+  const result={
+    direction:data.direction||'neutral',
+    confidence:data.confidence||0.5,
+    confidence_band:data.confidence_band||{low:(data.confidence||0.5)-0.08,high:(data.confidence||0.5)+0.08},
+    alignment_score:data.alignment_score||data.alignment||0.5,
+    thesis:data.thesis||data.reasoning||'Awaiting full analysis.',
+    signals:[],
+    invalidators:data.invalidators||data.key_risks||[],
+    devils_advocate:data.devils_advocate||data.contrarian_view||'',
+  };
+
+  // Parse signals from various API formats
+  if(data.signals&&Array.isArray(data.signals)){
+    result.signals=data.signals.map(s=>({
+      agent:s.agent||s.name||'unknown',
+      direction:s.direction||'neutral',
+      confidence:s.confidence||s.weight||0.5,
+      layer:s.layer||s.temporal_layer||'t2',
+      label:s.label||s.description||s.agent||'signal',
+    }));
+  }else if(data.agent_signals){
+    // Alternative format
+    for(const [agent,sig] of Object.entries(data.agent_signals)){
+      result.signals.push({
+        agent:agent,
+        direction:sig.direction||'neutral',
+        confidence:sig.confidence||0.5,
+        layer:sig.layer||'t2',
+        label:sig.label||agent.replace(/_/g,' '),
+      });
+    }
+  }
+
+  // Parse invalidators from string or array
+  if(typeof result.invalidators==='string'){
+    result.invalidators=result.invalidators.split('\n').filter(x=>x.trim());
+  }
+
+  return result;
+}
+
+function renderPanel(data){
+  const dc=DCOL[data.direction]||'#888880';
+  const arrowMap={bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501'};
+
+  // Direction
+  document.getElementById('sp-dir-arrow').textContent=arrowMap[data.direction]||'\u2501';
+  document.getElementById('sp-dir-arrow').style.color=dc;
+  document.getElementById('sp-dir-word').textContent=(data.direction||'neutral').toUpperCase();
+  document.getElementById('sp-dir-word').style.color=dc;
+  document.getElementById('sp-direction').style.color=dc;
+
+  // Confidence big number
+  const confEl=document.getElementById('sp-conf-big');
+  confEl.textContent=(data.confidence*100).toFixed(0)+'%';
+  confEl.style.color=data.confidence>=0.75?'#f0d060':data.confidence>=0.5?'#c8e8f8':'#445566';
+
+  // Confidence band
+  const lo=data.confidence_band.low,hi=data.confidence_band.high;
+  document.getElementById('sp-band-text').textContent=`${(lo*100).toFixed(0)}% - ${(hi*100).toFixed(0)}%`;
+  document.getElementById('sp-band-lo').textContent=(lo*100).toFixed(0)+'%';
+  document.getElementById('sp-band-hi').textContent=(hi*100).toFixed(0)+'%';
+  const bandFill=document.getElementById('sp-band-fill');
+  bandFill.style.width=(data.confidence*100)+'%';
+  bandFill.style.background=dc;
+
+  // Alignment
+  document.getElementById('sp-align').textContent=data.alignment_score.toFixed(3);
+
+  // Thesis
+  document.getElementById('sp-thesis').textContent=data.thesis;
+
+  // Update global state for visualization
+  oracleConf=data.confidence;
+  oracleDir=data.direction;
+  oracleAlign=data.alignment_score;
+
+  // Signals grouped by layer
+  const layerOrder=['t3','t2','t1','t0'];
+  const layerLabels={t3:'T3 SLOW BREATH',t2:'T2 REGULAR BREATH',t1:'T1 QUICK BREATH',t0:'T0 HEARTBEAT'};
+  const layerColors={t3:'#9988ee',t2:'#22cc88',t1:'#ddaa33',t0:'#44aaee'};
+  const layerDotColors={t3:'#6655cc',t2:'#118866',t1:'#996611',t0:'#115588'};
+
+  const grouped={};
+  layerOrder.forEach(l=>grouped[l]=[]);
+  (data.signals||[]).forEach(s=>{
+    const layer=(s.layer||'t2').toLowerCase();
+    if(!grouped[layer])grouped[layer]=[];
+    grouped[layer].push(s);
+  });
+
+  let html='';
+  layerOrder.forEach(layer=>{
+    const sigs=grouped[layer];
+    if(!sigs||sigs.length===0)return;
+    html+=`<div class="sp-layer-header" style="color:${layerColors[layer]}">${layerLabels[layer]}</div>`;
+    sigs.forEach((s,si)=>{
+      const sc=DCOL[s.direction]||'#888880';
+      const sa=({bullish:'\u25B2',bearish:'\u25BC',neutral:'\u2501',unknown:'\u25CB'})[s.direction]||'\u25CB';
+      const confPct=Math.round((s.confidence||0)*100);
+      html+=`<div class="sp-signal" data-layer="${layer}" data-idx="${si}" data-agent="${s.agent}">`;
+      html+=`<div class="sp-sig-dot" style="background:${layerDotColors[layer]}"></div>`;
+      html+=`<div class="sp-sig-arrow" style="color:${sc}">${sa}</div>`;
+      html+=`<div class="sp-sig-name">${s.label||s.agent}</div>`;
+      html+=`<div class="sp-sig-bar-wrap"><div class="sp-sig-bar" style="width:${confPct}%;background:${sc}"></div></div>`;
+      html+=`<div class="sp-sig-conf">${confPct}%</div>`;
+      html+=`</div>`;
+    });
+  });
+  document.getElementById('sp-signals-list').innerHTML=html;
+
+  // Attach click handlers for signal rows
+  document.querySelectorAll('.sp-signal').forEach(row=>{
+    row.addEventListener('click',function(){
+      const agent=this.getAttribute('data-agent');
+      // Find the matching NODES entry and make it glow
+      const match=NODES.find(n=>n.ag===agent||n.lab.toLowerCase().includes(agent.replace(/_/g,' ').toLowerCase().slice(0,6)));
+      if(match){glowNode=match;glowTimer=1.0}
+    });
+  });
+
+  // Risk / invalidators
+  let riskHtml='';
+  (data.invalidators||[]).forEach(inv=>{
+    riskHtml+=`<div class="sp-risk-item">${inv}</div>`;
+  });
+  document.getElementById('sp-invalidators').innerHTML=riskHtml;
+  document.getElementById('sp-devil').textContent=data.devils_advocate||'';
+}
+
+// =====================================================================
+// API INTEGRATION
+// =====================================================================
+async function fetchOracleState(){
+  let usedLive=false;
+  let panelData=null;
+
+  // Try the API
+  try{
+    const resp=await fetch(`${API}/api/query`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:'What is the current state of crude oil?'}),
+    });
+    if(resp.ok){
+      const data=await resp.json();
+      panelData=parseAPIResponse(data);
+      // Only count as live if we got meaningful data
+      if(panelData.signals.length>0||panelData.thesis.length>20){
+        usedLive=true;
+      }
+    }
+  }catch(e){
+    console.warn('API query failed:',e);
+  }
+
+  // If API didn't give us good signal data, use mock but still try to get partial live data
+  if(!panelData||panelData.signals.length===0){
+    panelData=Object.assign({},MOCK_DATA);
+    usedLive=false;
+  }
+
+  // Also fetch health
+  try{
+    const d=await fetch(`${API}/api/health`).then(r=>r.json());
+    const s=d.feed_summary||{};feedsHealthy=s.healthy||0;feedsTotal=s.total_feeds||0;
+    signalCount=Object.keys(d.feed_health||{}).reduce((a,m)=>a+Object.keys(d.feed_health[m]||{}).length,0);
+  }catch(e){
+    console.warn('Health API failed:',e);
+  }
+
+  panelIsLive=usedLive;
+  const badge=document.getElementById('sp-live-badge');
+  badge.textContent=usedLive?'LIVE':'MOCK';
+  badge.className='sp-live '+(usedLive?'live':'mock');
+
+  renderPanel(panelData);
+}
+
 async function poll(){
   try{
     const d=await fetch(`${API}/api/health`).then(r=>r.json());
@@ -499,7 +801,16 @@ async function poll(){
     if(h.calls&&h.calls.length>0){const l=h.calls[0];oracleConf=l.confidence||0.74;oracleDir=l.direction||'neutral'}
   }catch{}
 }
-poll();setInterval(()=>{if(!paused&&!warMode&&!fullAlign)poll()},30000);
+
+// Render mock immediately so panel is never empty
+renderPanel(Object.assign({},MOCK_DATA));
+
+// Then fetch live data (async — won't block render)
+fetchOracleState();
+setInterval(()=>{if(!paused&&!warMode&&!fullAlign)fetchOracleState()},60000); // 60s — avoid burning API credits
+
+// Slide-in the panel
+setTimeout(()=>{document.getElementById('state-panel').classList.add('visible')},200);
 </script>
 </body>
 </html>
