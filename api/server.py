@@ -91,6 +91,18 @@ def _init_oracle():
     except ImportError:
         logger.warning("Commodities module not available")
 
+    try:
+        from modules.fx import FXModule
+        registry.register(FXModule(client))
+    except ImportError:
+        logger.warning("FX module not available")
+
+    try:
+        from modules.crypto import CryptoModule
+        registry.register(CryptoModule(client))
+    except ImportError:
+        logger.warning("Crypto module not available")
+
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────
 

@@ -171,14 +171,14 @@ class TestShippingAgent:
 class TestPositioningAgent:
 
     @pytest.mark.asyncio
-    async def test_parser_pending_returns_unknown(self):
-        """COT parser not built yet — agent should honestly return UNKNOWN."""
-        feed = COTFeed()
+    async def test_feed_failure_returns_unknown(self):
+        """ZERO FABRICATION — feed failure = UNKNOWN, not a guess."""
+        feed = MagicMock(spec=COTFeed)
+        feed.fetch.return_value = FeedResult(ok=False, error="connection timeout")
         agent = PositioningAgent(feed)
         signal = await agent.run(DOMAIN)
         assert signal.direction == SignalDirection.UNKNOWN
-        assert signal.confidence <= 0.30
-        assert "pending" in signal.reasoning.lower() or "parser" in signal.reasoning.lower()
+        assert signal.confidence == 0.25
 
 
 # ─── Narrative Agent ─────────────────────────────────────────────────────────

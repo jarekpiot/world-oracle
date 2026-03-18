@@ -3,10 +3,10 @@
 
 ---
 
-## Status: Phase 3 Complete — Live in Production
+## Status: Phase 3+ Complete — Live in Production
 
-All phases delivered. Three modules live. Deployed to Railway.
-**149 tests passing** across 10 test files.
+All phases delivered. Three modules live. CI/CD pipeline active. Deployed to Railway.
+**167 tests passing** across 11 test files.
 
 **Live API:** https://world-oracle-production.up.railway.app
 **Repo:** https://github.com/jarekpiot/world-oracle
@@ -36,9 +36,9 @@ All phases delivered. Three modules live. Deployed to Railway.
 | Narrative | `modules/commodities/agents/narrative_agent.py` | T1 | GDELT | Live (free, no key) |
 | Structural | `modules/commodities/agents/structural_agent.py` | T3 | Curated | Live (no feed needed) |
 | Shipping | `modules/commodities/agents/shipping_agent.py` | T2 | Baltic Dry | Returns UNKNOWN — needs paid data |
-| Positioning | `modules/commodities/agents/positioning_agent.py` | T2 | CFTC COT | Returns UNKNOWN — needs parser |
+| Positioning | `modules/commodities/agents/positioning_agent.py` | T2 | CFTC COT | Live — real CFTC data parsed |
 
-**6 agents producing real signals, 2 honestly returning UNKNOWN (ZERO FABRICATION).**
+**7 agents producing real signals, 1 honestly returning UNKNOWN (ZERO FABRICATION).**
 
 ### Oracle Team — FX Module (DONE — 3 agents)
 | Agent | File | Layer | Feed | Status |
@@ -85,6 +85,7 @@ All phases delivered. Three modules live. Deployed to Railway.
 |---|---|---|
 | Railway API | https://world-oracle-production.up.railway.app | Live |
 | GitHub | https://github.com/jarekpiot/world-oracle | Pushed |
+| CI/CD | `.github/workflows/deploy.yml` | Tests gate deploy — push to main auto-deploys |
 
 Verified live endpoints:
 - `/api/health` — returns module status + feed health
@@ -106,8 +107,9 @@ Verified live endpoints:
 | `test_api.py` | 10 | FastAPI endpoints + rate limiter |
 | `test_signal_store.py` | 9 | Persistence, history, outcomes, track record |
 | `test_feed_monitor.py` | 5 | Health check aggregation + summary |
+| `test_cot_parser.py` | 18 | CFTC COT parser + positioning agent |
 | `test_dashboard.py` | 3 | Dashboard structure + imports |
-| **Total** | **149** | **All passing** |
+| **Total** | **167** | **All passing** |
 
 ---
 
@@ -115,7 +117,7 @@ Verified live endpoints:
 | Layer | Agents | Status |
 |---|---|---|
 | T3 — Slow Breath | structural_agent | Curated secular views |
-| T2 — Regular Breath | inventory_agent, shipping_agent, positioning_agent | 1 of 3 live, 2 pending feeds |
+| T2 — Regular Breath | inventory_agent, positioning_agent, shipping_agent | 2 of 3 live, 1 pending feed |
 | T1 — Quick Breath | geopolitical_agent, weather_agent, narrative_agent | All live |
 | T0 — Heartbeat | price_agent | Live — EIA daily spot price |
 
@@ -138,7 +140,6 @@ Signals:    8 received (7 agents + T0 price)
 ## What's NOT Built Yet
 | Item | Priority | Notes |
 |---|---|---|
-| CFTC COT parser | Medium | Fixed-width text format — needs custom parser |
 | Baltic Dry data | Medium | No free API — needs paid provider or scraper |
 | Crypto onchain feed | Medium | Needs Glassnode/Dune/CryptoQuant integration |
 | Equities Module | Next | Same contract, new domain prefix |
