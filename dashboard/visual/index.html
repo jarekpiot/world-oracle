@@ -862,6 +862,39 @@ async function poll(){
 // Current query for the panel
 var currentQuery='What is the current state of crude oil?';
 var currentAssetLabel='Crude Oil';
+var lastPanelData=null;
+
+// ── HOVER DETAIL — override renderPanel BEFORE first call ──────────────
+const _origRenderPanel=renderPanel;
+renderPanel=function(data){
+  lastPanelData=data;
+  _origRenderPanel(data);
+  // Attach hover listeners to signal rows
+  document.querySelectorAll('.sp-signal').forEach(row=>{
+    row.addEventListener('mouseenter',function(){
+      const agent=this.getAttribute('data-agent');
+      const sig=(data.signals||[]).find(s=>s.agent===agent);
+      if(!sig)return;
+      const detail=document.getElementById('sp-detail');
+      detail.querySelector('.sp-detail-agent').textContent=sig.label||sig.agent;
+      detail.querySelector('.sp-detail-reasoning').textContent=sig.reasoning||'No reasoning available';
+      detail.querySelector('.sp-detail-meta').textContent=
+        (sig.agent||'')+' \u00b7 '+(sig.layer||'').toUpperCase()+' \u00b7 '+Math.round((sig.confidence||0)*100)+'% confidence';
+      const triggers=sig.decay_triggers||sig.decayTriggers||[];
+      detail.querySelector('.sp-detail-triggers').innerHTML=triggers.length?
+        '<span style="color:#5a7a8a;margin-bottom:4px">Decay triggers:</span>'+
+        triggers.map(t=>'<span>\u2022 '+t+'</span>').join(''):'';
+      const rowRect=this.getBoundingClientRect();
+      const panelRect=document.getElementById('state-panel').getBoundingClientRect();
+      detail.style.top=Math.max(10,rowRect.top-40)+'px';
+      detail.style.left=(panelRect.left-270)+'px';
+      detail.classList.add('show');
+    });
+    row.addEventListener('mouseleave',function(){
+      document.getElementById('sp-detail').classList.remove('show');
+    });
+  });
+};
 
 // Render mock immediately so panel is never empty
 renderPanel(Object.assign({},MOCK_DATA));
@@ -899,51 +932,7 @@ document.getElementById('panel-toggle').addEventListener('click',function(){
   setTimeout(resize,450);
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HOVER DETAIL POPUP — shows reasoning + decay triggers on signal hover
-// ═══════════════════════════════════════════════════════════════════════════
-var lastPanelData=null; // Store last rendered panel data for hover detail
-
-// Override renderPanel to store data and add hover listeners
-const _origRenderPanel=renderPanel;
-renderPanel=function(data){
-  lastPanelData=data;
-  _origRenderPanel(data);
-  // Attach hover listeners to signal rows
-  document.querySelectorAll('.sp-signal').forEach((row,idx)=>{
-    row.addEventListener('mouseenter',function(e){
-      const agent=this.getAttribute('data-agent');
-      const sig=(data.signals||[]).find(s=>s.agent===agent);
-      if(!sig)return;
-      const detail=document.getElementById('sp-detail');
-      detail.querySelector('.sp-detail-agent').textContent=sig.label||sig.agent;
-      detail.querySelector('.sp-detail-reasoning').textContent=sig.reasoning||'No reasoning available';
-      detail.querySelector('.sp-detail-meta').textContent=
-        `${sig.agent} \u00b7 ${(sig.layer||'').toUpperCase()} \u00b7 ${Math.round((sig.confidence||0)*100)}% confidence`;
-      // Decay triggers
-      const triggers=sig.decay_triggers||sig.decayTriggers||[];
-      if(triggers.length){
-        detail.querySelector('.sp-detail-triggers').innerHTML=
-          '<span style="color:#5a7a8a;margin-bottom:4px">Decay triggers:</span>'+
-          triggers.map(t=>'<span>\u2022 '+t+'</span>').join('');
-      }else{
-        detail.querySelector('.sp-detail-triggers').innerHTML='';
-      }
-      // Position to the left of the panel, aligned with the row
-      const rowRect=this.getBoundingClientRect();
-      const panelRect=document.getElementById('state-panel').getBoundingClientRect();
-      detail.style.top=Math.max(10,rowRect.top-40)+'px';
-      detail.style.left=(panelRect.left-270)+'px';
-      detail.classList.add('show');
-    });
-    row.addEventListener('mouseleave',function(){
-      document.getElementById('sp-detail').classList.remove('show');
-    });
-  });
-};
-
-// Re-render with stored data to attach listeners
-if(lastPanelData)renderPanel(lastPanelData);
+// Hover detail override is defined above, before first renderPanel call.
 </script>
 </body>
 </html>
