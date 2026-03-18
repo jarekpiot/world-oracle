@@ -28,7 +28,8 @@
       "Bash(npm list:*)",
       "Bash(DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -q --tb=short 2>&1 | tail -10)",
       "Bash(DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -q --tb=short 2>&1 | tail -5)",
-      "Bash(DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -q --tb=short 2>&1 | tail -3)"
+      "Bash(DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -q --tb=short 2>&1 | tail -3)",
+      "Bash(set:*)"
     ]
   }
 }

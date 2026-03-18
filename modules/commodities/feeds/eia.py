@@ -32,13 +32,17 @@ class EIAFeed(BaseFeed):
         if not self.api_key:
             raise ValueError("EIA_API_KEY not set")
 
-        # Weekly petroleum stocks — last 10 data points for trend
+        # Weekly petroleum stocks — US commercial crude excl SPR
+        # Must filter by duoarea=NUS (national) AND series to avoid
+        # mixing total stocks, SPR, transit, and regional PADDs
         return (
             f"https://api.eia.gov/v2/petroleum/stoc/wstk/data/"
             f"?api_key={self.api_key}"
             f"&frequency=weekly"
             f"&data[0]=value"
             f"&facets[product][]={kwargs.get('product', 'EPC0')}"
+            f"&facets[duoarea][]=NUS"
+            f"&facets[process][]=SAX"
             f"&sort[0][column]=period"
             f"&sort[0][direction]=desc"
             f"&length={kwargs.get('length', 10)}"
