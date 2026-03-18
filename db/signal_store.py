@@ -85,19 +85,17 @@ class SignalStore:
 
         rows = []
         for s in signals:
+            direction = getattr(s, 'direction', None)
+            layer = getattr(s, 'temporal_layer', None)
             rows.append(SignalLog(
                 call_id=call_id,
-                agent_id=getattr(s, 'agent_id', str(s.get('agent', ''))),
-                domain=getattr(s, 'domain_path', str(s.get('domain', ''))),
-                direction=getattr(s, 'direction', s.get('direction', '')).value
-                    if hasattr(getattr(s, 'direction', None), 'value')
-                    else str(s.get('direction', '')),
-                confidence=getattr(s, 'confidence', s.get('confidence', 0)),
-                temporal_layer=getattr(s, 'temporal_layer', s.get('layer', '')).value
-                    if hasattr(getattr(s, 'temporal_layer', None), 'value')
-                    else str(s.get('layer', '')),
-                reasoning=getattr(s, 'reasoning', s.get('reasoning', ''))[:500],
-                decay_triggers=getattr(s, 'decay_triggers', s.get('decay_triggers', [])),
+                agent_id=getattr(s, 'agent_id', ''),
+                domain=getattr(s, 'domain_path', ''),
+                direction=direction.value if hasattr(direction, 'value') else str(direction or ''),
+                confidence=getattr(s, 'confidence', 0),
+                temporal_layer=layer.value if hasattr(layer, 'value') else str(layer or ''),
+                reasoning=getattr(s, 'reasoning', '')[:500],
+                decay_triggers=getattr(s, 'decay_triggers', []),
             ))
 
         async with AsyncSessionLocal() as session:
