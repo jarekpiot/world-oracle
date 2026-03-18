@@ -3,18 +3,37 @@
 
 ---
 
-## Status: Production — API credits depleted, feeds live, viz complete
+## Status: Production — FULLY LIVE
 
-Three modules, 16 agents, PostgreSQL persisting, CI/CD green.
-Mobile-responsive visualization with synced orb + state panel.
-**191 tests passing** across 11 test files.
-**Blocker:** Anthropic API credit balance is empty — /api/query returns 500 until topped up.
+Three modules, 16 agents, all systems operational.
+API responding with real oracle data. Visualization shows LIVE badge.
+**191 tests passing.** PostgreSQL persisting. CI/CD green.
 
 **Live:** https://world-oracle-production.up.railway.app
 **Visual:** https://world-oracle-production.up.railway.app/visual/
+**API:** https://world-oracle-production.up.railway.app/api/query
 **Repo:** https://github.com/jarekpiot/world-oracle
 **CI/CD:** https://github.com/jarekpiot/world-oracle/actions
-**Credits:** https://console.anthropic.com/settings/billing
+
+---
+
+## Latest Oracle Response (live, 2026-03-18)
+
+```
+Direction:  NEUTRAL (genuinely conflicted)
+Confidence: 0.677
+Alignment:  0.667
+Thesis:     "Extreme short positioning vs persistent inventory builds = standoff"
+
+T3 structural:  NEUTRAL  0.55  — energy transition uncertainty
+T2 strategic:   BEARISH  0.53  — +3.8M build (4th consecutive), geopolitical calm
+T2 positioning: BULLISH  0.68  — managed money extremely short (-28,145 contracts)
+T1 tactical:    BULLISH  0.55  — cold snap, narrative balanced
+T0 heartbeat:   BULLISH  0.48  — WTI $94.65 +4.28%
+
+Key conflict: positioning_agent (bullish 0.68) vs inventory_agent (bearish 0.68)
+              — same horizon, opposite directions, equal confidence. True standoff.
+```
 
 ---
 
@@ -36,135 +55,87 @@ GitHub (main) --> GitHub Actions (191 tests) --> Railway (auto-deploy)
 
 ---
 
-## What Works Right Now (no API credits needed)
+## Data Feeds: 8/10 Live
 
-- `/api/health` — all feed health status
-- `/api/modules` — 3 modules registered (commodities, fx, crypto)
-- `/api/history` — 188+ oracle calls logged in PostgreSQL
-- `/visual/` — full visualization with mock data fallback
-- All data feeds pulling live (EIA, GDELT, NOAA, CFTC COT)
-
-## What's Blocked
-
-- `/api/query` — returns 500 (Anthropic credits depleted)
-- Visual panel shows MOCK instead of LIVE (query endpoint down)
-- Inventory LLM reasoning agent can't reason (falls back to thresholds)
-
-**Fix:** Add credits at https://console.anthropic.com/settings/billing
+| Feed | Status |
+|---|---|
+| EIA Spot Price | Live — filtered correctly (duoarea=NUS, process=SAX) |
+| EIA Weekly Petroleum | Live — +3.8M build (was +856M before fix) |
+| GDELT Geopolitical | Live — shared 15min cache + backoff |
+| NOAA Weather | Live — cold snap detected |
+| CFTC COT | Live — parser fixed, showing -28,145 managed money net short |
+| GDELT FX / Crypto x2 | Live — shared cache |
+| Baltic Dry | Not connected — needs paid provider |
+| Crypto Onchain | Not built — needs Glassnode/Dune |
 
 ---
 
 ## Modules & Agents
 
 ### Commodities (9 agents)
-| Agent | Layer | Feed | Intelligence | Status |
-|---|---|---|---|---|
-| price_agent | T0 | EIA Spot | Threshold | Live |
-| breaking_agent | T0 | GDELT | Volume spike detection | Live |
-| inventory_agent | T2 | EIA Weekly | **LLM reasoning (Claude)** + threshold fallback | Live — correct data now (+3.8M not +856M) |
-| positioning_agent | T2 | CFTC COT | Extreme positioning detection | Live — parser fixed |
-| geopolitical_agent | T1 | GDELT | Escalation scoring | Live |
-| weather_agent | T1/T2 | NOAA | Weather impact mapping | Live |
-| narrative_agent | T1 | GDELT | Tone + volume analysis | Live |
-| structural_agent | T3 | Curated | Static views | Live |
-| shipping_agent | T2 | Baltic Dry | — | UNKNOWN (needs paid data) |
+| Agent | Layer | Intelligence | Status |
+|---|---|---|---|
+| price_agent | T0 | Threshold | Live — $94.65 +4.28% |
+| breaking_agent | T0 | GDELT volume spike | Live |
+| inventory_agent | T2 | **LLM reasoning (Claude)** + fallback | Live — +3.8M build, 4th consecutive |
+| positioning_agent | T2 | Extreme detection | Live — managed money -28,145 short |
+| geopolitical_agent | T1 | Escalation scoring | Live — calm, no risk premium |
+| weather_agent | T1/T2 | Weather impact | Live — cold snap active |
+| narrative_agent | T1 | Tone + volume | Live |
+| structural_agent | T3 | Curated views | Live |
+| shipping_agent | T2 | — | UNKNOWN (needs paid data) |
 
-### FX (3 agents)
-| Agent | Layer | Status |
-|---|---|---|
-| rate_differential_agent | T2/T3 | Live — curated views |
-| flow_agent | T1/T2 | Live — GDELT risk-on/off |
-| sentiment_agent | T0/T1 | Live — GDELT |
-
-### Crypto (4 agents)
-| Agent | Layer | Status |
-|---|---|---|
-| structural_agent | T3 | Live — BTC, ETH, SOL |
-| regulation_agent | T2/T3 | Live — GDELT |
-| narrative_agent | T0/T1 | Live — GDELT |
-| onchain_agent | T1 | UNKNOWN (needs Glassnode/Dune) |
-
----
-
-## Data Feeds: 8/10 Live
-
-| Feed | Status | Notes |
-|---|---|---|
-| EIA Spot Price | Live | Fixed — filters by duoarea=NUS, process=SAX |
-| EIA Weekly Petroleum | Live | Fixed — was comparing wrong series (+856M bug) |
-| GDELT Geopolitical | Live | Fixed — shared 15min cache + exponential backoff |
-| NOAA Weather | Live | Fixed — title-case severity params |
-| CFTC COT | Live | Fixed — no-header CSV parsed with column indices |
-| GDELT FX | Live | Shared cache with geopolitical |
-| GDELT Crypto x2 | Live | Shared cache |
-| Baltic Dry | Not connected | Needs paid provider |
-| Crypto Onchain | Not built | Needs Glassnode/Dune |
-
----
-
-## Bugs Fixed This Session
-
-| Bug | Impact | Fix |
-|---|---|---|
-| EIA comparing different series | Oracle saw +856M barrel build (nonsense) | Filter by duoarea=NUS + process=SAX |
-| CFTC COT no header row | Positioning agent always returned UNKNOWN | Use csv.reader with manual column indices |
-| GDELT 429 rate limiting | Multiple agents hammering GDELT | Shared query cache (15min) + backoff |
-| NOAA 400 error | Weather agent offline | Title-case severity, repeated params |
-| globe.gl .animateIn() crash | Visualization blank | Removed invalid method, use Three.js r149 |
-| Panel showing MOCK | parseAPIResponse wrong format | Rewritten to match actual API response shape |
-| Orb not synced with panel | Nodes were hardcoded mock data | syncNodesToLiveData() rebuilds from API |
-| Mobile floating arrow | Toggle stuck in middle of screen | Replaced with drag handle bar |
+### FX (3 agents) — all live
+### Crypto (4 agents) — 3 live, 1 UNKNOWN (onchain)
 
 ---
 
 ## Visualization
 
-| Feature | Status | Platform |
+| Feature | Desktop | Mobile |
 |---|---|---|
-| Canvas 2D orbital rings | Working | Desktop + Mobile |
-| Three.js translucent globe | Working | Desktop |
-| Orb-panel sync | Working | Both |
-| State panel (Option B) | Working | Both |
-| Multi-asset selector (8 assets) | Working | Both |
-| Sliding panel collapse | Working | Desktop: side arrow, Mobile: drag bar |
-| Hover detail popup | Working | Desktop only |
-| Pulse intensity (confidence-driven) | Working | Both |
-| Scroll zoom / pinch-to-zoom | Working | Desktop: scroll, Mobile: pinch |
-| War mode / Full align | Working | Both |
-| Mock data fallback | Working | Both |
-| Mobile responsive | Working | Stacks vertically, scales controls |
+| Canvas 2D orbital rings | Yes | Yes |
+| Three.js translucent globe | Yes | Yes |
+| Orb-panel sync (live data) | Yes | Yes |
+| State panel with signal breakdown | Yes | Yes (stacks below) |
+| Multi-asset selector (8 assets) | Yes | Yes |
+| Panel collapse (orb fills space) | Side arrow | Drag handle bar |
+| Hover detail popup | Yes | Hidden (too small) |
+| Pulse intensity (confidence) | Yes | Yes |
+| Zoom | Scroll wheel | Pinch-to-zoom |
+| LIVE/MOCK badge | Yes | Yes |
 
 ---
 
-## Platform
+## Bugs Fixed This Session (8 total)
 
-| Component | Status |
-|---|---|
-| FastAPI Server | Live — 6 endpoints + root redirect |
-| PostgreSQL | Live — Railway plugin, 188+ calls persisted |
-| Async SQLAlchemy | Live — OracleCall + SignalLog |
-| CI/CD | Green — 191 tests gate deploy |
-| CORS | Enabled |
-| GDELT Rate Limiting | Fixed — shared cache + backoff |
+1. EIA comparing wrong series (+856M → +3.8M)
+2. CFTC COT no-header CSV → manual column parser
+3. GDELT 429 rate limiting → shared cache + backoff
+4. NOAA 400 → title-case severity params
+5. globe.gl crash → replaced with Canvas 2D
+6. Panel MOCK data → parseAPIResponse rewritten for real API shape
+7. Orb not synced → syncNodesToLiveData()
+8. Mobile floating arrow → drag handle bar
 
 ---
 
 ## Test Coverage: 191 passing
 
-| File | Count | Covers |
-|---|---|---|
-| test_foundation.py | 19 | Spine |
-| test_commodities.py | 32 | Feeds + inventory LLM reasoning + module |
-| test_agents.py | 31 | All 9 commodity agents + breaking |
-| test_price_agent.py | 9 | T0 price |
-| test_cot_parser.py | 18 | CFTC COT parser |
-| test_fx.py | 20 | FX module |
-| test_crypto.py | 31 | Crypto module |
-| test_api.py | 10 | FastAPI endpoints |
-| test_signal_store.py | 9 | Async persistence |
-| test_feed_monitor.py | 5 | Health checks |
-| test_dashboard.py | 3 | Dashboard + visual |
-| **Total** | **191** | |
+| File | Count |
+|---|---|
+| test_foundation.py | 19 |
+| test_commodities.py | 32 |
+| test_agents.py | 31 |
+| test_price_agent.py | 9 |
+| test_cot_parser.py | 18 |
+| test_fx.py | 20 |
+| test_crypto.py | 31 |
+| test_api.py | 10 |
+| test_signal_store.py | 9 |
+| test_feed_monitor.py | 5 |
+| test_dashboard.py | 3 |
+| **Total** | **191** |
 
 ---
 
@@ -172,11 +143,10 @@ GitHub (main) --> GitHub Actions (191 tests) --> Railway (auto-deploy)
 
 | Item | Priority | Notes |
 |---|---|---|
-| **API credits** | **BLOCKER** | Top up at console.anthropic.com |
-| LLM reasoning for all agents | High | Only inventory has it — pattern ready for others |
+| LLM reasoning for all agents | High | Only inventory has it — pattern ready |
 | Baltic Dry feed | Medium | Needs paid provider |
 | Crypto onchain feed | Medium | Needs Glassnode/Dune |
-| Equities Module | Next | Same contract, new domain |
+| Equities Module | Next | Same contract |
 | Alembic migrations | Low | Tables auto-create |
 
 ---
@@ -185,7 +155,7 @@ GitHub (main) --> GitHub Actions (191 tests) --> Railway (auto-deploy)
 
 ```bash
 DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -v
-python main.py --query "Will crude oil prices rise over the next 6 weeks?"
+python main.py --query "Will crude oil prices rise?"
 DATABASE_URL=sqlite+aiosqlite:///local.db uvicorn api.server:app --reload --port 8000
 open dashboard/visual/index.html
 ```
