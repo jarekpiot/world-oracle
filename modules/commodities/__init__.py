@@ -64,10 +64,10 @@ class CommoditiesModule(OracleModule):
     def feeds(self) -> list[DataFeed]:
         return [
             DataFeed(
-                id="eia_spot_price",
-                name="EIA Daily Spot Prices",
-                url="https://api.eia.gov/v2/petroleum/pri/spt/data/",
-                refresh_rate="daily",
+                id="live_price",
+                name="Yahoo Finance Live Prices",
+                url="https://query2.finance.yahoo.com/v8/finance/chart/CL=F",
+                refresh_rate="60s",
                 temporal_layer=TemporalLayer.T0,
                 is_free=True,
             ),
@@ -214,7 +214,7 @@ class CommoditiesModule(OracleModule):
         return {
             "module": self.id,
             "feeds": {
-                "eia_spot_price": self.price_feed.health(),
+                "live_price": self.price_feed.health(),
                 "eia_petroleum": self.eia_feed.health(),
                 "gdelt_geopolitical": self.gdelt_feed.health(),
                 "noaa_weather": self.noaa_feed.health(),

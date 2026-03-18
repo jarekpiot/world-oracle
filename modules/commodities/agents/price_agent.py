@@ -42,12 +42,12 @@ class PriceAgent:
         Fetch latest price and produce a T0 signal.
         Returns UNKNOWN if price data unavailable (ZERO FABRICATION).
         """
-        result = self.feed.fetch()
+        result = self.feed.fetch(domain=domain_path)
 
         if not result.ok or not result.data:
             return self.temporal.tag_signal(
                 agent_id=self.AGENT_ID,
-                source="EIA spot price (unavailable)",
+                source="Price feed (unavailable)",
                 value={"error": result.error},
                 direction=SignalDirection.UNKNOWN,
                 confidence=0.25,
@@ -64,7 +64,7 @@ class PriceAgent:
         if price is None:
             return self.temporal.tag_signal(
                 agent_id=self.AGENT_ID,
-                source="EIA spot price",
+                source="Yahoo Finance (live)",
                 value=data,
                 direction=SignalDirection.UNKNOWN,
                 confidence=0.25,
@@ -77,7 +77,7 @@ class PriceAgent:
         if pct_change is None:
             return self.temporal.tag_signal(
                 agent_id=self.AGENT_ID,
-                source="EIA spot price",
+                source="Yahoo Finance (live)",
                 value=data,
                 direction=SignalDirection.NEUTRAL,
                 confidence=0.35,
@@ -91,7 +91,7 @@ class PriceAgent:
 
         return self.temporal.tag_signal(
             agent_id=self.AGENT_ID,
-            source="EIA spot price",
+            source="Yahoo Finance (live)",
             value={
                 "price": price,
                 "pct_change": pct_change,

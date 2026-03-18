@@ -490,7 +490,7 @@ class TestCommoditiesModule:
         module = CommoditiesModule(client)
         feeds = module.feeds
         assert len(feeds) >= 1
-        assert feeds[0].id == "eia_spot_price"
+        assert feeds[0].id == "live_price"
 
     @pytest.mark.asyncio
     async def test_handle_returns_module_response(self):

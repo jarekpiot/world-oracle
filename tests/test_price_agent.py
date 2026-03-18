@@ -19,34 +19,45 @@ DOMAIN = "commodity.energy.crude_oil"
 class TestPriceFeed:
 
     def test_parse_valid_response(self):
-        feed = PriceFeed(api_key="test")
+        feed = PriceFeed()
         raw = {
-            "response": {
-                "data": [
-                    {"period": "2025-03-14", "value": "72.50", "series-description": "WTI Crude"},
-                    {"period": "2025-03-13", "value": "70.00", "series-description": "WTI Crude"},
-                ]
+            "chart": {
+                "result": [{
+                    "meta": {
+                        "regularMarketPrice": 99.05,
+                        "chartPreviousClose": 95.00,
+                        "regularMarketDayHigh": 100.20,
+                        "regularMarketDayLow": 94.50,
+                        "symbol": "CL=F",
+                        "currency": "USD",
+                    },
+                    "timestamp": [],
+                    "indicators": {"quote": [{"close": []}]},
+                }]
             }
         }
         parsed = feed._parse(raw)
-        assert parsed["price"] == 72.50
-        assert parsed["previous"] == 70.00
-        assert parsed["change"] == 2.5
-        assert parsed["pct_change"] == pytest.approx(3.571, abs=0.01)
+        assert parsed["price"] == 99.05
+        assert parsed["previous"] == 95.00
+        assert parsed["change"] == pytest.approx(4.05, abs=0.01)
+        assert parsed["pct_change"] == pytest.approx(4.263, abs=0.01)
 
     def test_parse_empty_response(self):
-        feed = PriceFeed(api_key="test")
-        raw = {"response": {"data": []}}
+        feed = PriceFeed()
+        raw = {"chart": {"result": []}}
         parsed = feed._parse(raw)
         assert parsed["price"] is None
         assert parsed["change"] is None
 
-    def test_health_no_key(self):
-        feed = PriceFeed(api_key=None)
-        with patch.dict("os.environ", {}, clear=True):
-            feed.api_key = None
-            h = feed.health()
-            assert h["status"] == "no_api_key"
+    def test_health_checks_wti(self):
+        feed = PriceFeed()
+        feed._symbol_cache["CL=F"] = (
+            FeedResult(data={"price": 99.05}, ok=True, fetched_at=1000.0),
+            1000.0
+        )
+        # Would need live network; just test structure
+        h = feed.health()
+        assert "status" in h
 
 
 class TestPriceAgent:
@@ -62,8 +73,8 @@ class TestPriceAgent:
                 "change": change,
                 "pct_change": pct,
                 "unit": "USD/barrel",
-                "series": "WTI Crude",
-                "period": "2025-03-14",
+                "source": "Yahoo Finance (live)",
+                "period": "live",
                 "readings": [],
             },
             ok=True,
