@@ -30,12 +30,17 @@ class NOAAFeed(BaseFeed):
         super().__init__(cache_ttl_seconds=cache_ttl_seconds)
 
     def _url(self, **kwargs) -> str:
-        # Active alerts for the US — filtered by severity
-        severity = kwargs.get("severity", "severe,extreme")
+        # Active alerts for the US — filtered by severity.
+        # NOAA requires title-case values and does NOT accept
+        # comma-separated severity — use repeated query params instead.
+        severities = kwargs.get("severity", ["Severe", "Extreme"])
+        if isinstance(severities, str):
+            severities = [s.strip().title() for s in severities.split(",")]
+        severity_qs = "&".join(f"severity={s}" for s in severities)
         return (
             f"https://api.weather.gov/alerts/active"
             f"?status=actual"
-            f"&severity={severity}"
+            f"&{severity_qs}"
         )
 
     def _headers(self) -> dict:

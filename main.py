@@ -47,9 +47,19 @@ async def run_oracle(query: str, verbose: bool = True) -> dict:
     except ImportError:
         print("[Main] Commodities module not yet built — using fallback only")
 
-    # Future modules register here:
-    # from modules.fx import FXModule
-    # registry.register(FXModule(client))
+    # FX module — second plug
+    try:
+        from modules.fx import FXModule
+        registry.register(FXModule(client))
+    except ImportError:
+        print("[Main] FX module not yet built — skipping")
+
+    # Crypto module — third plug
+    try:
+        from modules.crypto import CryptoModule
+        registry.register(CryptoModule(client))
+    except ImportError:
+        print("[Main] Crypto module not yet built — skipping")
 
     if verbose:
         print(f"\n[Oracle] Registered modules: {[m['id'] for m in registry.list_modules()]}")
@@ -120,6 +130,18 @@ async def health_check():
         registry.register(CommoditiesModule(client))
     except ImportError:
         print("Commodities module not built yet")
+
+    try:
+        from modules.fx import FXModule
+        registry.register(FXModule(client))
+    except ImportError:
+        print("FX module not built yet")
+
+    try:
+        from modules.crypto import CryptoModule
+        registry.register(CryptoModule(client))
+    except ImportError:
+        print("Crypto module not built yet")
 
     print("\n[Health Check] ─────────────────────────────")
     for module_info in registry.list_modules():

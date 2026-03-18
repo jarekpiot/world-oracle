@@ -179,7 +179,7 @@ class TestCommoditiesModule:
         module = CommoditiesModule(client)
         feeds = module.feeds
         assert len(feeds) >= 1
-        assert feeds[0].id == "eia_petroleum"
+        assert feeds[0].id == "eia_spot_price"
 
     @pytest.mark.asyncio
     async def test_handle_returns_module_response(self):
@@ -218,14 +218,23 @@ class TestCommoditiesModule:
         assert len(response.sources) >= 1
 
     @pytest.mark.asyncio
-    async def test_handle_with_feed_down_returns_unknown(self):
-        """Module still returns a response when feeds are down — just UNKNOWN."""
+    async def test_handle_with_feeds_down_inventory_unknown(self):
+        """When EIA feed is down, inventory agent returns UNKNOWN."""
         client = MagicMock()
         module = CommoditiesModule(client)
 
+        # Mock EIA feeds as down
+        down_result = FeedResult(ok=False, error="timeout")
         module.eia_feed = MagicMock(spec=EIAFeed)
-        module.eia_feed.fetch.return_value = FeedResult(ok=False, error="timeout")
+        module.eia_feed.fetch.return_value = down_result
         module.inventory_agent = InventoryAgent(module.eia_feed)
+
+        # Mock price feed as down too
+        from modules.commodities.feeds.price import PriceFeed
+        from modules.commodities.agents.price_agent import PriceAgent
+        module.price_feed = MagicMock(spec=PriceFeed)
+        module.price_feed.fetch.return_value = down_result
+        module.price_agent = PriceAgent(module.price_feed)
 
         query = DecomposedQuery(
             raw="Will crude oil rise?",
@@ -238,5 +247,8 @@ class TestCommoditiesModule:
 
         response = await module.handle(query)
         assert response.module_id == "commodities.v1"
-        assert response.synthesised_view == SignalDirection.UNKNOWN
-        assert response.signals[0].confidence == 0.25
+        # Inventory agent should be UNKNOWN with 0.25 confidence
+        inv_signals = [s for s in response.signals if s.agent_id == "inventory_agent"]
+        assert len(inv_signals) == 1
+        assert inv_signals[0].direction == SignalDirection.UNKNOWN
+        assert inv_signals[0].confidence == 0.25

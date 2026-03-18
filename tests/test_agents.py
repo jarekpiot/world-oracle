@@ -303,6 +303,15 @@ class TestCommoditiesModuleFullAgent:
             ok=True, fetched_at=1000.0,
         )
 
+        # Mock price feed
+        module.price_feed = MagicMock()
+        module.price_feed.fetch.return_value = FeedResult(
+            data={"price": 72.5, "previous": 71.0, "change": 1.5,
+                  "pct_change": 2.113, "unit": "USD/barrel", "series": "WTI",
+                  "period": "2025-03-14", "readings": []},
+            ok=True, fetched_at=1000.0,
+        )
+
         # Rebuild agents with mocked feeds
         from modules.commodities.agents.inventory_agent import InventoryAgent
         from modules.commodities.agents.geopolitical_agent import GeopoliticalAgent
@@ -310,7 +319,9 @@ class TestCommoditiesModuleFullAgent:
         from modules.commodities.agents.shipping_agent import ShippingAgent
         from modules.commodities.agents.positioning_agent import PositioningAgent
         from modules.commodities.agents.narrative_agent import NarrativeAgent
+        from modules.commodities.agents.price_agent import PriceAgent
 
+        module.price_agent = PriceAgent(module.price_feed)
         module.inventory_agent = InventoryAgent(module.eia_feed)
         module.geopolitical_agent = GeopoliticalAgent(module.gdelt_feed)
         module.weather_agent = WeatherAgent(module.noaa_feed)
@@ -329,11 +340,12 @@ class TestCommoditiesModuleFullAgent:
         )
 
         response = await module.handle(query)
-        assert len(response.signals) == 7
+        assert len(response.signals) == 8
         assert response.module_id == "commodities.v1"
 
         # Check we have signals from all agents
         agent_ids = {s.agent_id for s in response.signals}
+        assert "price_agent" in agent_ids
         assert "inventory_agent" in agent_ids
         assert "geopolitical_agent" in agent_ids
         assert "weather_agent" in agent_ids
@@ -342,7 +354,8 @@ class TestCommoditiesModuleFullAgent:
         assert "narrative_agent" in agent_ids
         assert "structural_agent" in agent_ids
 
-        # Check temporal coverage — we should have T1, T2, T3 at minimum
+        # Check temporal coverage — all four layers now
         layers = {s.temporal_layer for s in response.signals}
+        assert TemporalLayer.T0 in layers  # price
         assert TemporalLayer.T2 in layers  # inventory
         assert TemporalLayer.T3 in layers  # structural

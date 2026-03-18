@@ -1,9 +1,15 @@
 """
-Commodities Module — The seed module.
-First plug into the oracle spine. If this works, every future module is just a copy of the pattern.
+Crypto Module — Digital assets.
+Second plug into the oracle spine. Same contract, same discipline.
 
 Implements the OracleModule contract from core/registry.py.
 Runs agent pool in parallel, collects signals, returns ModuleResponse.
+
+Crypto-specific characteristics:
+  - Narratives move faster than any other asset class
+  - Regulation is THE structural driver
+  - On-chain data is a unique signal source (pending live feed)
+  - 24/7 markets — no close, no weekend
 """
 
 import asyncio
@@ -16,36 +22,28 @@ from core.registry import (
     Signal, SignalDirection, TemporalLayer, QueryType,
 )
 from core.temporal_engine import TemporalEngine
-from modules.commodities.agents.inventory_agent import InventoryAgent
-from modules.commodities.agents.geopolitical_agent import GeopoliticalAgent
-from modules.commodities.agents.weather_agent import WeatherAgent
-from modules.commodities.agents.shipping_agent import ShippingAgent
-from modules.commodities.agents.positioning_agent import PositioningAgent
-from modules.commodities.agents.narrative_agent import NarrativeAgent
-from modules.commodities.agents.structural_agent import StructuralAgent
-from modules.commodities.agents.price_agent import PriceAgent
-from modules.commodities.feeds.eia import EIAFeed
-from modules.commodities.feeds.price import PriceFeed
+from modules.crypto.agents.onchain_agent import OnchainAgent
+from modules.crypto.agents.narrative_agent import CryptoNarrativeAgent
+from modules.crypto.agents.structural_agent import CryptoStructuralAgent
+from modules.crypto.agents.regulation_agent import RegulationAgent
 from modules.commodities.feeds.gdelt import GDELTFeed
-from modules.commodities.feeds.noaa import NOAAFeed
-from modules.commodities.feeds.baltic import BalticDryFeed
-from modules.commodities.feeds.cot import COTFeed
 
 
-class CommoditiesModule(OracleModule):
+class CryptoModule(OracleModule):
     """
-    Commodities asset class module.
-    Covers: energy, metals, agriculture.
-    Seed implementation: crude oil via EIA inventory data.
+    Crypto asset class module.
+    Covers: bitcoin, ethereum, solana, and the broader digital asset space.
+    Reuses GDELT feed for narrative and regulation signals.
+    On-chain feed pending — agent returns UNKNOWN honestly.
     """
 
     @property
     def id(self) -> str:
-        return "commodities.v1"
+        return "crypto.v1"
 
     @property
     def domain_prefix(self) -> str:
-        return "commodity"
+        return "crypto"
 
     @property
     def query_types(self) -> list[QueryType]:
@@ -57,58 +55,35 @@ class CommoditiesModule(OracleModule):
 
     @property
     def confidence_range(self) -> tuple[float, float]:
-        return (0.25, 0.88)
+        return (0.25, 0.80)
 
     @property
     def feeds(self) -> list[DataFeed]:
         return [
             DataFeed(
-                id="eia_spot_price",
-                name="EIA Daily Spot Prices",
-                url="https://api.eia.gov/v2/petroleum/pri/spt/data/",
-                refresh_rate="daily",
-                temporal_layer=TemporalLayer.T0,
-                is_free=True,
-            ),
-            DataFeed(
-                id="eia_petroleum",
-                name="EIA Weekly Petroleum Status",
-                url="https://api.eia.gov/v2/petroleum/stoc/wstk/data/",
-                refresh_rate="weekly",
-                temporal_layer=TemporalLayer.T2,
-                is_free=True,
-            ),
-            DataFeed(
-                id="gdelt_geopolitical",
-                name="GDELT Geopolitical Events",
+                id="gdelt_crypto_narrative",
+                name="GDELT Crypto Narrative",
                 url="https://api.gdeltproject.org/api/v2/doc/doc",
                 refresh_rate="15min",
                 temporal_layer=TemporalLayer.T1,
                 is_free=True,
             ),
             DataFeed(
-                id="noaa_weather",
-                name="NOAA Weather Alerts",
-                url="https://api.weather.gov/alerts/active",
-                refresh_rate="6hr",
-                temporal_layer=TemporalLayer.T1,
+                id="gdelt_crypto_regulation",
+                name="GDELT Crypto Regulation",
+                url="https://api.gdeltproject.org/api/v2/doc/doc",
+                refresh_rate="15min",
+                temporal_layer=TemporalLayer.T2,
                 is_free=True,
             ),
             DataFeed(
-                id="baltic_dry",
-                name="Baltic Dry Index",
+                id="onchain_metrics",
+                name="On-chain Metrics (pending)",
                 url="",
-                refresh_rate="daily",
-                temporal_layer=TemporalLayer.T2,
+                refresh_rate="15min",
+                temporal_layer=TemporalLayer.T1,
                 is_free=False,
-            ),
-            DataFeed(
-                id="cftc_cot",
-                name="CFTC Commitment of Traders",
-                url="https://www.cftc.gov/dea/newcot/deacmesf.txt",
-                refresh_rate="weekly",
-                temporal_layer=TemporalLayer.T2,
-                is_free=True,
+                last_updated=None,
             ),
         ]
 
@@ -116,40 +91,25 @@ class CommoditiesModule(OracleModule):
         self.client = client
         self.temporal = TemporalEngine()
 
-        # Feeds
-        self.eia_feed = EIAFeed()
+        # Feeds — reuse GDELT, on-chain pending
         self.gdelt_feed = GDELTFeed()
-        self.noaa_feed = NOAAFeed()
-        self.baltic_feed = BalticDryFeed()
-        self.cot_feed = COTFeed()
-        self.price_feed = PriceFeed()
 
-        # Agents — all 8 wired up (T0 through T3)
-        self.price_agent = PriceAgent(self.price_feed)
-        self.inventory_agent = InventoryAgent(self.eia_feed)
-        self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed)
-        self.weather_agent = WeatherAgent(self.noaa_feed)
-        self.shipping_agent = ShippingAgent(self.baltic_feed)
-        self.positioning_agent = PositioningAgent(self.cot_feed)
-        self.narrative_agent = NarrativeAgent(self.gdelt_feed)
-        self.structural_agent = StructuralAgent()
+        # Agents — all 4 wired up
+        self.onchain_agent = OnchainAgent()
+        self.narrative_agent = CryptoNarrativeAgent(self.gdelt_feed)
+        self.structural_agent = CryptoStructuralAgent()
+        self.regulation_agent = RegulationAgent(self.gdelt_feed)
 
     async def handle(self, query: DecomposedQuery) -> ModuleResponse:
         """
         Run all available agents in parallel, collect signals.
-        Agents with no dependencies run concurrently (wave 0).
         """
         # ── Run agents ───────────────────────────────────────────────
-        # Currently: inventory only. As agents are built, add them here.
         agent_tasks = [
-            self.price_agent.run(query.domain_path),
-            self.inventory_agent.run(query.domain_path),
-            self.geopolitical_agent.run(query.domain_path),
-            self.weather_agent.run(query.domain_path),
-            self.shipping_agent.run(query.domain_path),
-            self.positioning_agent.run(query.domain_path),
+            self.onchain_agent.run(query.domain_path),
             self.narrative_agent.run(query.domain_path),
             self.structural_agent.run(query.domain_path),
+            self.regulation_agent.run(query.domain_path),
         ]
 
         signals: list[Signal] = await asyncio.gather(*agent_tasks)
@@ -209,12 +169,9 @@ class CommoditiesModule(OracleModule):
         return {
             "module": self.id,
             "feeds": {
-                "eia_spot_price": self.price_feed.health(),
-                "eia_petroleum": self.eia_feed.health(),
-                "gdelt_geopolitical": self.gdelt_feed.health(),
-                "noaa_weather": self.noaa_feed.health(),
-                "baltic_dry": self.baltic_feed.health(),
-                "cftc_cot": self.cot_feed.health(),
+                "gdelt_crypto_narrative": self.gdelt_feed.health(),
+                "gdelt_crypto_regulation": self.gdelt_feed.health(),
+                "onchain_metrics": {"status": "pending", "message": "On-chain feed not yet implemented"},
             },
         }
 
@@ -222,7 +179,5 @@ class CommoditiesModule(OracleModule):
         """
         Check if a signal is still valid.
         Returns True if valid, False if decayed.
-        For now: time-based validity only. Trigger-based decay requires
-        checking live data against the trigger conditions.
         """
         return self.temporal.is_valid(signal)
