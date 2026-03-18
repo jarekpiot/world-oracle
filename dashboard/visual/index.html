@@ -43,6 +43,11 @@ canvas{display:block;position:absolute;top:0;left:0}
 
 .sp-section{padding:16px 18px 10px 18px;border-bottom:0.5px solid rgba(10,58,74,0.4)}
 .sp-label{font:500 9px/1 sans-serif;color:#2a5a7a;letter-spacing:0.18em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.sp-assets{display:flex;flex-wrap:wrap;gap:4px;padding:10px 16px 6px;border-bottom:0.5px solid #0a2a3a}
+.sp-asset{font:500 9px/1 sans-serif;color:#3a6a8a;letter-spacing:0.1em;padding:4px 10px;border:0.5px solid #0a2a3a;border-radius:12px;cursor:pointer;transition:all 0.25s;pointer-events:all}
+.sp-asset:hover{color:#7dd4f8;border-color:#1a6a8a}
+.sp-asset.active{color:#c8e8f8;border-color:#2a6a8a;background:rgba(42,106,138,0.15)}
+.sp-asset.loading{opacity:0.5;pointer-events:none}
 .sp-live{font:500 8px/1 sans-serif;letter-spacing:0.12em;padding:2px 7px;border-radius:8px;text-transform:uppercase}
 .sp-live.live{color:#22dd99;border:0.5px solid rgba(34,221,153,0.3)}
 .sp-live.mock{color:#886611;border:0.5px solid rgba(136,102,17,0.3)}
@@ -110,9 +115,20 @@ canvas{display:block;position:absolute;top:0;left:0}
 
 <!-- STATE PANEL -->
 <div id="state-panel">
+  <!-- ASSET SELECTOR -->
+  <div class="sp-assets" id="sp-assets">
+    <div class="sp-asset active" data-query="What is the current state of crude oil?" data-label="Crude Oil">OIL</div>
+    <div class="sp-asset" data-query="What is the outlook for natural gas?" data-label="Nat Gas">GAS</div>
+    <div class="sp-asset" data-query="What is the outlook for gold?" data-label="Gold">GOLD</div>
+    <div class="sp-asset" data-query="What is the outlook for copper?" data-label="Copper">CU</div>
+    <div class="sp-asset" data-query="What is the outlook for EUR/USD?" data-label="EUR/USD">EUR</div>
+    <div class="sp-asset" data-query="What is the outlook for USD/JPY?" data-label="USD/JPY">JPY</div>
+    <div class="sp-asset" data-query="What is the outlook for Bitcoin?" data-label="Bitcoin">BTC</div>
+    <div class="sp-asset" data-query="What is the outlook for Ethereum?" data-label="Ethereum">ETH</div>
+  </div>
   <div class="sp-section" id="sp-oracle">
     <div class="sp-label">
-      <span>Oracle View</span>
+      <span id="sp-asset-label">Oracle View — Crude Oil</span>
       <span class="sp-live mock" id="sp-live-badge">MOCK</span>
     </div>
     <div class="sp-direction" id="sp-direction">
@@ -753,7 +769,7 @@ async function fetchOracleState(){
     const resp=await fetch(`${API}/api/query`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({query:'What is the current state of crude oil?'}),
+      body:JSON.stringify({query:currentQuery}),
     });
     if(resp.ok){
       const data=await resp.json();
@@ -802,12 +818,29 @@ async function poll(){
   }catch{}
 }
 
+// Current query for the panel
+var currentQuery='What is the current state of crude oil?';
+var currentAssetLabel='Crude Oil';
+
 // Render mock immediately so panel is never empty
 renderPanel(Object.assign({},MOCK_DATA));
 
+// Asset selector click handlers
+document.querySelectorAll('.sp-asset').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    document.querySelectorAll('.sp-asset').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    currentQuery=this.getAttribute('data-query');
+    currentAssetLabel=this.getAttribute('data-label');
+    document.getElementById('sp-asset-label').textContent='Oracle View \u2014 '+currentAssetLabel;
+    this.classList.add('loading');
+    fetchOracleState().then(()=>{this.classList.remove('loading')});
+  });
+});
+
 // Then fetch live data (async — won't block render)
 fetchOracleState();
-setInterval(()=>{if(!paused&&!warMode&&!fullAlign)fetchOracleState()},60000); // 60s — avoid burning API credits
+setInterval(()=>{if(!paused&&!warMode&&!fullAlign)fetchOracleState()},60000);
 
 // Slide-in the panel
 setTimeout(()=>{document.getElementById('state-panel').classList.add('visible')},200);
