@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>World Oracle — The World Breathing</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Helvetica Neue',Arial,sans-serif;color:#c8e8f8}
+#globe-container{width:100%;height:100%;position:absolute;top:0;left:0}
+
+/* TOP CENTER — oracle status */
+#hud-top{position:fixed;top:24px;left:50%;transform:translateX(-50%);text-align:center;z-index:10;pointer-events:none}
+#hud-title{font-size:10px;letter-spacing:6px;text-transform:uppercase;color:#2a5a7a;margin-bottom:6px}
+#hud-confidence{font-size:42px;font-weight:200;color:#c8e8f8;line-height:1;transition:color 1.5s}
+#hud-direction{font-size:11px;margin-top:4px;letter-spacing:2px;transition:color 1.5s}
+#hud-status{font-size:9px;color:#2a5a7a;margin-top:8px;letter-spacing:1px}
+
+/* BOTTOM CENTER — ticker */
+#hud-ticker{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);text-align:center;z-index:10;pointer-events:none;font-size:10px;color:#2a5a7a;letter-spacing:1px;opacity:0;transition:opacity 0.8s}
+
+/* CONTROLS */
+#controls{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
+.ctrl-btn{background:transparent;border:0.5px solid #2a5a7a;color:#3a6a8a;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;cursor:pointer;transition:all 0.3s}
+.ctrl-btn:hover,.ctrl-btn.active{background:#2a5a7a22;color:#88bbdd;border-color:#88bbdd}
+
+/* RIGHT LEGEND */
+#legend{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:10;pointer-events:none}
+.legend-row{display:flex;align-items:center;gap:6px;margin:6px 0;font-size:9px;color:#4a7a9a;letter-spacing:1px}
+.legend-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+
+/* TOOLTIP */
+#tooltip{position:fixed;display:none;background:#0a0e14ee;border:0.5px solid #2a5a7a;padding:10px 14px;border-radius:6px;font-size:10px;z-index:20;pointer-events:none;max-width:260px}
+#tooltip .tt-agent{color:#88bbdd;font-weight:600;margin-bottom:4px}
+#tooltip .tt-detail{color:#6a9aba;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="globe-container"></div>
+
+<!-- HUD -->
+<div id="hud-top">
+  <div id="hud-title">world oracle</div>
+  <div id="hud-confidence">—</div>
+  <div id="hud-direction">connecting...</div>
+  <div id="hud-status"></div>
+</div>
+<div id="hud-ticker"></div>
+
+<!-- CONTROLS -->
+<div id="controls">
+  <button class="ctrl-btn active" id="btn-live" onclick="setMode('live')">live</button>
+  <button class="ctrl-btn" id="btn-war" onclick="setMode('war')">war mode</button>
+  <button class="ctrl-btn" id="btn-align" onclick="setMode('align')">full align</button>
+  <button class="ctrl-btn" id="btn-pause" onclick="togglePause()">pause</button>
+  <button class="ctrl-btn" id="btn-sound" onclick="toggleSound()">sound</button>
+</div>
+
+<!-- LEGEND -->
+<div id="legend">
+  <div class="legend-row"><div class="legend-dot" style="background:#44cc66"></div>bullish signal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#cc4444"></div>bearish signal</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#667788"></div>neutral / unknown</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#6655cc"></div>T3 slow breath</div>
+  <div class="legend-row"><div class="legend-dot" style="background:#118866"></div>T2 regular breath</div>
+</div>
+
+<!-- TOOLTIP -->
+<div id="tooltip">
+  <div class="tt-agent"></div>
+  <div class="tt-detail"></div>
+</div>
+
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.30.0/dist/globe.gl.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+const API = 'https://world-oracle-production.up.railway.app';
+const POLL_INTERVAL = 30000;
+
+// Signal locations — real geography
+const LOCATIONS = {
+  inventory_agent:    { lat:31.0,  lng:-97.0,  label:'EIA Crude (Texas)' },
+  price_agent:        { lat:29.5,  lng:-95.0,  label:'WTI Spot (Houston)' },
+  geopolitical_agent: { lat:26.0,  lng:50.0,   label:'Geopolitical (Persian Gulf)' },
+  weather_agent:      { lat:25.0,  lng:-70.0,  label:'Weather (Atlantic)' },
+  shipping_agent:     { lat:51.5,  lng:-0.1,   label:'Shipping (London)' },
+  positioning_agent:  { lat:38.9,  lng:-77.0,  label:'CFTC (Washington DC)' },
+  narrative_agent:    { lat:40.7,  lng:-74.0,   label:'Narrative (New York)' },
+  structural_agent:   { lat:48.2,  lng:16.4,   label:'Structural (Vienna)' },
+  rate_differential_agent: { lat:50.1, lng:8.7, label:'Rate Diff (Frankfurt)' },
+  flow_agent:         { lat:35.7,  lng:139.7,  label:'Capital Flow (Tokyo)' },
+  sentiment_agent:    { lat:1.3,   lng:103.8,  label:'Sentiment (Singapore)' },
+  onchain_agent:      { lat:37.8,  lng:-122.4, label:'On-chain (San Francisco)' },
+  regulation_agent:   { lat:38.9,  lng:-77.0,  label:'Regulation (DC)' },
+};
+
+const NORTH_POLE = { lat:89.9, lng:0 };
+
+const DIR_COLORS = {
+  bullish: '#44cc66',
+  bearish: '#cc4444',
+  neutral: '#667788',
+  unknown: '#445566',
+};
+
+// Ring configs
+const RING_CONFIGS = [
+  { id:'t3', radius:180, tube:1.2, color:0x6655cc, period:8,  tiltX:0.2,tiltY:0,tiltZ:0.1, label:'T3' },
+  { id:'t2', radius:155, tube:1.5, color:0x118866, period:4,  tiltX:0.1,tiltY:0.3,tiltZ:0, label:'T2' },
+  { id:'t1', radius:130, tube:1.2, color:0x886611, period:2,  tiltX:0,tiltY:0.2,tiltZ:0.2, label:'T1' },
+  { id:'t0', radius:110, tube:1.8, color:0x114477, period:0.5,tiltX:0.15,tiltY:0,tiltZ:0.3, label:'T0' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOCK DATA — never go dark
+// ═══════════════════════════════════════════════════════════════════════════
+const MOCK_DATA = {
+  status: 'ok',
+  modules_registered: 3,
+  feed_health: {
+    'commodities.v1': {
+      eia_spot_price:       { status:'ok', last_fetched: Date.now()/1000 },
+      eia_petroleum:        { status:'ok', last_fetched: Date.now()/1000 },
+      gdelt_geopolitical:   { status:'ok', last_fetched: Date.now()/1000 },
+      noaa_weather:         { status:'ok', last_fetched: Date.now()/1000 },
+      baltic_dry:           { status:'not_connected' },
+      cftc_cot:             { status:'ok', last_fetched: Date.now()/1000 },
+    },
+    'fx.v1': {
+      gdelt_fx: { status:'ok', last_fetched: Date.now()/1000 },
+    },
+    'crypto.v1': {
+      gdelt_crypto: { status:'ok', last_fetched: Date.now()/1000 },
+    },
+  },
+  feed_summary: { status:'degraded', total_feeds:8, healthy:7, unhealthy:1 },
+};
+
+const MOCK_SIGNALS = [
+  { agent:'inventory_agent',   direction:'bearish', confidence:0.85, layer:'T2', reasoning:'Large inventory build — supply glut' },
+  { agent:'price_agent',       direction:'bullish', confidence:0.70, layer:'T0', reasoning:'WTI +4.28% — strong upward move' },
+  { agent:'geopolitical_agent',direction:'bearish', confidence:0.50, layer:'T1', reasoning:'Geopolitical calm — risk premium compressing' },
+  { agent:'weather_agent',     direction:'bullish', confidence:0.70, layer:'T1', reasoning:'Cold snap active — heating demand spike' },
+  { agent:'positioning_agent', direction:'neutral', confidence:0.50, layer:'T2', reasoning:'Managed money balanced positioning' },
+  { agent:'narrative_agent',   direction:'neutral', confidence:0.40, layer:'T1', reasoning:'Narrative balanced — no momentum' },
+  { agent:'structural_agent',  direction:'neutral', confidence:0.55, layer:'T3', reasoning:'Energy transition uncertainty' },
+  { agent:'shipping_agent',    direction:'unknown', confidence:0.25, layer:'T2', reasoning:'Baltic Dry feed not connected' },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════════════════
+let oracleState = {
+  confidence: 0.74,
+  direction: 'bearish',
+  alignment: 0.667,
+  signals: MOCK_SIGNALS,
+  mode: 'live',
+  paused: false,
+  soundOn: false,
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GLOBE.GL SETUP
+// ═══════════════════════════════════════════════════════════════════════════
+const globe = Globe()
+  .globeImageUrl('//unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+  .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+  .backgroundImageUrl('//unpkg.com/three-globe/example/img/night-sky.png')
+  .showAtmosphere(true)
+  .atmosphereColor('rgba(31,184,255,0.15)')
+  .atmosphereAltitude(0.18)
+  .width(window.innerWidth)
+  .height(window.innerHeight)
+  .animateIn(true)
+  (document.getElementById('globe-container'));
+
+// Auto-rotate
+globe.controls().autoRotate = true;
+globe.controls().autoRotateSpeed = 0.3;
+globe.controls().enableDamping = true;
+globe.controls().dampingFactor = 0.1;
+
+// Point of view
+globe.pointOfView({ lat:20, lng:0, altitude:2.5 }, 2000);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAYER A — SIGNAL NODES, ARCS, RIPPLE RINGS
+// ═══════════════════════════════════════════════════════════════════════════
+function updateGlobeData(signals) {
+  // Signal nodes — glowing dots at each agent location
+  const points = signals.map(s => {
+    const loc = LOCATIONS[s.agent];
+    if (!loc) return null;
+    return {
+      lat: loc.lat, lng: loc.lng,
+      size: 0.3 + s.confidence * 0.7,
+      color: DIR_COLORS[s.direction] || DIR_COLORS.unknown,
+      agent: s.agent,
+      label: loc.label,
+      ...s,
+    };
+  }).filter(Boolean);
+
+  globe
+    .pointsData(points)
+    .pointLat('lat').pointLng('lng')
+    .pointAltitude(0.01)
+    .pointRadius('size')
+    .pointColor('color')
+    .pointResolution(12)
+    .onPointHover(p => {
+      if (p) showTooltip(p);
+      else hideTooltip();
+    });
+
+  // Arc flows — from signal locations to north pole (oracle core)
+  const arcs = signals.filter(s => LOCATIONS[s.agent] && s.direction !== 'unknown').map(s => {
+    const loc = LOCATIONS[s.agent];
+    const speed = s.layer === 'T0' ? 8 : s.layer === 'T1' ? 5 : s.layer === 'T2' ? 3 : 1.5;
+    return {
+      startLat: loc.lat, startLng: loc.lng,
+      endLat: NORTH_POLE.lat, endLng: NORTH_POLE.lng,
+      color: [DIR_COLORS[s.direction], '#0a0e14'],
+      stroke: 0.3 + s.confidence * 1.2,
+      dashLen: 0.4,
+      dashGap: 0.2,
+      speed: speed,
+      agent: s.agent,
+    };
+  });
+
+  globe
+    .arcsData(arcs)
+    .arcStartLat('startLat').arcStartLng('startLng')
+    .arcEndLat('endLat').arcEndLng('endLng')
+    .arcColor('color')
+    .arcStroke('stroke')
+    .arcDashLength('dashLen')
+    .arcDashGap('dashGap')
+    .arcDashAnimateTime(d => 4000 / d.speed)
+    .arcAltitudeAutoScale(0.4);
+
+  // Ripple rings — pulse outward from signal locations
+  const rings = signals.filter(s => LOCATIONS[s.agent]).map(s => {
+    const loc = LOCATIONS[s.agent];
+    const speed = s.layer === 'T0' ? 2 : s.layer === 'T1' ? 4 : s.layer === 'T2' ? 8 : 16;
+    return {
+      lat: loc.lat, lng: loc.lng,
+      maxR: 3 + s.confidence * 4,
+      propagationSpeed: speed,
+      repeatPeriod: speed * 500,
+      color: () => DIR_COLORS[s.direction] || DIR_COLORS.unknown,
+    };
+  });
+
+  globe
+    .ringsData(rings)
+    .ringLat('lat').ringLng('lng')
+    .ringMaxRadius('maxR')
+    .ringPropagationSpeed('propagationSpeed')
+    .ringRepeatPeriod('repeatPeriod')
+    .ringColor('color');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAYER B — ORBITAL TORUS RINGS (Three.js direct)
+// ═══════════════════════════════════════════════════════════════════════════
+const ringMeshes = [];
+let ringsReady = false;
+
+function initRings() {
+  const scene = globe.scene();
+  if (!scene) { setTimeout(initRings, 200); return; }
+
+  RING_CONFIGS.forEach(cfg => {
+    const geo = new THREE.TorusGeometry(cfg.radius, cfg.tube, 16, 100);
+    const mat = new THREE.MeshBasicMaterial({
+      color: cfg.color,
+      transparent: true,
+      opacity: 0.35,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.set(cfg.tiltX, cfg.tiltY, cfg.tiltZ);
+    mesh.userData = { cfg, baseScale:1 };
+    scene.add(mesh);
+    ringMeshes.push(mesh);
+
+    // GSAP breathing timeline
+    if (cfg.id === 't0') {
+      // T0: cardiac rhythm — 0.12s attack, 0.38s decay
+      gsap.to(mesh.scale, {
+        x:1.06, y:1.06, z:1.06,
+        duration:0.12,
+        ease:'power2.out',
+        repeat:-1,
+        yoyo:true,
+        yoyoEase:'power1.in',
+        repeatDelay:0.38,
+      });
+    } else {
+      const scaleMax = cfg.id === 't3' ? 1.02 : cfg.id === 't2' ? 1.03 : 1.04;
+      gsap.to(mesh.scale, {
+        x:scaleMax, y:scaleMax, z:scaleMax,
+        duration: cfg.period / 2,
+        ease:'sine.inOut',
+        repeat:-1,
+        yoyo:true,
+      });
+    }
+  });
+
+  ringsReady = true;
+}
+setTimeout(initRings, 1000);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAYER C — FRESNEL ATMOSPHERIC GLOW (GLSL)
+// ═══════════════════════════════════════════════════════════════════════════
+let glowMesh = null;
+let glowUniforms = null;
+
+function initGlow() {
+  const scene = globe.scene();
+  if (!scene) { setTimeout(initGlow, 200); return; }
+
+  const vertexShader = `
+    varying vec3 vertexNormal;
+    void main() {
+      vertexNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+  const fragmentShader = `
+    varying vec3 vertexNormal;
+    uniform vec3 glowColor;
+    uniform float intensity;
+    uniform float opacity;
+    void main() {
+      float fresnel = pow(1.0 - dot(vertexNormal, vec3(0.0, 0.0, 1.0)), intensity);
+      gl_FragColor = vec4(glowColor, fresnel * opacity);
+    }
+  `;
+
+  glowUniforms = {
+    glowColor: { value: new THREE.Color(0x1fb8ff) },
+    intensity: { value: 2.5 },
+    opacity: { value: 0.6 },
+  };
+
+  const glowGeo = new THREE.SphereGeometry(105, 48, 48);
+  const glowMat = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: glowUniforms,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.BackSide,
+    depthWrite: false,
+  });
+
+  glowMesh = new THREE.Mesh(glowGeo, glowMat);
+  scene.add(glowMesh);
+}
+setTimeout(initGlow, 1200);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST-PROCESSING — UnrealBloomPass equivalent via atmosphere
+// ═══════════════════════════════════════════════════════════════════════════
+// globe.gl manages its own render loop. Instead of a full EffectComposer,
+// we drive the bloom feel through glow intensity + ring opacity.
+
+function updateBloom(alignment, confidence) {
+  if (!glowUniforms) return;
+
+  // Strength mapped: full alignment → 1.6, abstain → 0.15
+  const strength = confidence < 0.5 ? 0.15 : 0.4 + alignment * 1.2;
+
+  glowUniforms.intensity.value = 1.5 + strength;
+  glowUniforms.opacity.value = Math.min(0.9, 0.2 + strength * 0.4);
+
+  // Ring opacity follows bloom
+  ringMeshes.forEach(m => {
+    m.material.opacity = confidence < 0.5 ? 0.1 : 0.2 + strength * 0.15;
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ATMOSPHERE COLOR — shifts with oracle state
+// ═══════════════════════════════════════════════════════════════════════════
+function updateAtmosphereColor(direction, confidence, warActive) {
+  if (!glowUniforms) return;
+
+  let color;
+  if (confidence < 0.5) {
+    color = new THREE.Color(0x111122); // dim — abstaining
+  } else if (warActive) {
+    color = new THREE.Color(0x881122); // red bleed — war premium
+  } else if (direction === 'bullish' && confidence > 0.75) {
+    color = new THREE.Color(0xcc8800); // gold corona — high confidence bullish
+  } else if (direction === 'bearish') {
+    color = new THREE.Color(0x1840aa); // deep blue — bearish
+  } else {
+    color = new THREE.Color(0x1fb8ff); // blue-teal — standard
+  }
+
+  gsap.to(glowUniforms.glowColor.value, {
+    r: color.r, g: color.g, b: color.b,
+    duration: 2,
+    ease: 'power2.inOut',
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HUD UPDATES
+// ═══════════════════════════════════════════════════════════════════════════
+const hudConf = document.getElementById('hud-confidence');
+const hudDir = document.getElementById('hud-direction');
+const hudStatus = document.getElementById('hud-status');
+const hudTicker = document.getElementById('hud-ticker');
+
+const DIR_SYMBOLS = { bullish:'▲', bearish:'▼', neutral:'━', unknown:'○' };
+
+function updateHUD(state) {
+  hudConf.textContent = state.confidence.toFixed(2);
+  hudConf.style.color = state.confidence >= 0.75 ? '#f0d060' :
+                         state.confidence >= 0.5  ? '#c8e8f8' : '#445566';
+
+  const sym = DIR_SYMBOLS[state.direction] || '○';
+  const layerStr = state.signals.length > 0 ? 'T2' : '';
+  hudDir.textContent = `${sym} ${state.direction} · ${layerStr}`;
+  hudDir.style.color = DIR_COLORS[state.direction] || DIR_COLORS.unknown;
+
+  const healthy = state.feedSummary ? state.feedSummary.healthy || 0 : 0;
+  const total = state.feedSummary ? state.feedSummary.total_feeds || 0 : 0;
+  hudStatus.textContent = `${state.signals.length} signals · ${healthy}/${total} feeds · alignment ${state.alignment.toFixed(2)}`;
+}
+
+// Ticker rotation
+const TICKER_MSGS = [
+  'the world breathes at four frequencies',
+  'T3 slow breath · months to years',
+  'T2 regular breath · weeks to months',
+  'T1 quick breath · hours to days',
+  'T0 heartbeat · seconds to minutes',
+  'when all layers align — highest conviction',
+  'insufficient signal is a valid answer',
+  'the oracle reads the breathing, not the heartbeat',
+];
+let tickerIdx = 0;
+function rotateTicker() {
+  hudTicker.style.opacity = 0;
+  setTimeout(() => {
+    hudTicker.textContent = TICKER_MSGS[tickerIdx % TICKER_MSGS.length];
+    hudTicker.style.opacity = 1;
+    tickerIdx++;
+  }, 800);
+}
+rotateTicker();
+setInterval(rotateTicker, 4000);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════════════════════════════════════
+const tooltip = document.getElementById('tooltip');
+
+function showTooltip(p) {
+  tooltip.querySelector('.tt-agent').textContent = p.label || p.agent;
+  tooltip.querySelector('.tt-detail').innerHTML =
+    `Direction: <strong style="color:${DIR_COLORS[p.direction]}">${p.direction}</strong><br>` +
+    `Confidence: ${(p.confidence*100).toFixed(0)}%<br>` +
+    `Layer: ${p.layer}<br>` +
+    `${p.reasoning || ''}`;
+  tooltip.style.display = 'block';
+
+  document.addEventListener('mousemove', moveTooltip);
+}
+function moveTooltip(e) {
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY + 14) + 'px';
+}
+function hideTooltip() {
+  tooltip.style.display = 'none';
+  document.removeEventListener('mousemove', moveTooltip);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODE CONTROLS
+// ═══════════════════════════════════════════════════════════════════════════
+function setMode(mode) {
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+
+  if (mode === 'war') {
+    oracleState.mode = 'war';
+    oracleState.direction = 'bearish';
+    oracleState.confidence = 0.82;
+    oracleState.alignment = 0.85;
+    // Add war signals
+    oracleState.signals = MOCK_SIGNALS.map(s => ({...s}));
+    oracleState.signals.find(s=>s.agent==='geopolitical_agent').direction = 'bullish';
+    oracleState.signals.find(s=>s.agent==='geopolitical_agent').confidence = 0.78;
+    oracleState.signals.find(s=>s.agent==='geopolitical_agent').reasoning = 'High escalation — Hormuz chokepoint threat';
+    document.getElementById('btn-war').classList.add('active');
+    updateAll(null, true);
+  } else if (mode === 'align') {
+    oracleState.mode = 'align';
+    oracleState.direction = 'bullish';
+    oracleState.confidence = 0.88;
+    oracleState.alignment = 1.0;
+    oracleState.signals = MOCK_SIGNALS.map(s => ({...s, direction:'bullish', confidence:0.8+Math.random()*0.1}));
+    document.getElementById('btn-align').classList.add('active');
+    updateAll(null, false);
+  } else {
+    oracleState.mode = 'live';
+    oracleState.signals = [...MOCK_SIGNALS];
+    document.getElementById('btn-live').classList.add('active');
+    poll();
+  }
+}
+
+function togglePause() {
+  oracleState.paused = !oracleState.paused;
+  const btn = document.getElementById('btn-pause');
+  btn.classList.toggle('active', oracleState.paused);
+  globe.controls().autoRotate = !oracleState.paused;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIO — Tone.js breathing soundscape
+// ═══════════════════════════════════════════════════════════════════════════
+let audioInited = false;
+let t3Osc, t2Osc, t1Osc, t0Kick, audioGain;
+
+function initAudio() {
+  if (audioInited) return;
+  audioInited = true;
+
+  audioGain = new Tone.Gain(0).toDestination();
+
+  t3Osc = new Tone.Oscillator(55, 'sine').connect(new Tone.Gain(0.08).connect(audioGain));
+  t2Osc = new Tone.Oscillator(120, 'sine').connect(new Tone.Gain(0.05).connect(audioGain));
+  t1Osc = new Tone.Oscillator(400, 'sine').connect(new Tone.Gain(0.03).connect(audioGain));
+
+  t0Kick = new Tone.MembraneSynth({
+    pitchDecay:0.05,envelope:{attack:0.01,decay:0.4,sustain:0,release:0.1}
+  }).connect(new Tone.Gain(0.15).connect(audioGain));
+
+  t3Osc.start(); t2Osc.start(); t1Osc.start();
+
+  // T0 heartbeat loop
+  const loop = new Tone.Loop(time => { t0Kick.triggerAttackRelease('C1','8n',time); }, '500ms');
+  loop.start(0);
+  Tone.Transport.start();
+}
+
+function toggleSound() {
+  if (!audioInited) {
+    Tone.start().then(initAudio);
+  }
+  oracleState.soundOn = !oracleState.soundOn;
+  document.getElementById('btn-sound').classList.toggle('active', oracleState.soundOn);
+  if (audioGain) {
+    gsap.to(audioGain.gain, { value: oracleState.soundOn ? 0.5 : 0, duration:1 });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MASTER UPDATE
+// ═══════════════════════════════════════════════════════════════════════════
+function updateAll(apiData, warActive) {
+  if (apiData) {
+    // Extract feed health counts
+    oracleState.feedSummary = apiData.feed_summary || {};
+  }
+
+  const { confidence, direction, alignment, signals } = oracleState;
+  const isWar = warActive || oracleState.mode === 'war';
+
+  updateGlobeData(signals);
+  updateHUD(oracleState);
+  updateAtmosphereColor(direction, confidence, isWar);
+  updateBloom(alignment, confidence);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// API POLLING
+// ═══════════════════════════════════════════════════════════════════════════
+async function poll() {
+  if (oracleState.mode !== 'live') return;
+  try {
+    const data = await fetch(`${API}/api/health`).then(r => r.json());
+    updateAll(data, false);
+  } catch {
+    updateAll(MOCK_DATA, false);
+  }
+}
+
+poll();
+setInterval(() => { if (!oracleState.paused) poll(); }, POLL_INTERVAL);
+
+// Initial render
+setTimeout(() => updateAll(MOCK_DATA, false), 500);
+
+// Resize
+window.addEventListener('resize', () => {
+  globe.width(window.innerWidth).height(window.innerHeight);
+});
+</script>
+</body>
+</html>

@@ -20,7 +20,8 @@ from typing import Optional
 
 import anthropic
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from core.registry import ModuleRegistry
@@ -140,6 +141,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Serve the breathing visualization
+# CORS — allow the visualization to fetch from API when opened as file://
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Serve the breathing visualization
+import pathlib
+_visual_dir = pathlib.Path(__file__).parent.parent / "dashboard" / "visual"
+if _visual_dir.exists():
+    app.mount("/visual", StaticFiles(directory=str(_visual_dir), html=True), name="visual")
 
 
 # ─── Request / Response Models ───────────────────────────────────────────────

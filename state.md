@@ -77,6 +77,24 @@ All phases delivered. Three modules live. CI/CD pipeline active. Deployed to Rai
 | Signal History | Past calls, outcomes, win rate tracking | Done |
 | Feed Health | Live/stale feed status per module | Done |
 | Breathing Map | T3->T0 visual with signal state per layer | Done |
+| **World Breathing** | 3D globe visualization — globe.gl + Three.js + GSAP | **Done** |
+
+### Visual Engineer (Phase 4 — DONE)
+| Feature | Status |
+|---|---|
+| 3D WebGL Globe (globe.gl) | Live — Blue Marble texture, topology, atmosphere |
+| Signal Nodes | Glowing dots at real lat/lng per agent |
+| Arc Flows | Animated arcs from signal locations to north pole |
+| Ripple Rings | Pulsing at temporal speed per signal |
+| Orbital Torus Rings | 4 rings breathing at T3/T2/T1/T0 frequencies |
+| Fresnel Atmospheric Glow | GLSL shader, color shifts with oracle state |
+| Bloom Effect | Intensity tied to alignment_score |
+| GSAP Breathing | Cardiac rhythm for T0, sine for T1-T3 |
+| Tone.js Audio | Optional soundscape — 55hz drone + heartbeat kick |
+| Live API Connection | Polls /api/health every 30s |
+| Mock Data Fallback | Never goes dark — full signal set |
+| Mode Controls | live / war mode / full align / pause / sound |
+| Served via FastAPI | /visual/ route + standalone file:// |
 
 ---
 
