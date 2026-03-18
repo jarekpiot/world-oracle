@@ -170,6 +170,13 @@ class Synthesiser:
 
         raw = response.content[0].text.strip()
 
+        # Strip markdown code fences (Haiku often wraps JSON in ```json)
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+            if raw.endswith("```"):
+                raw = raw[:-3]
+            raw = raw.strip()
+
         try:
             return json.loads(raw)
         except json.JSONDecodeError:

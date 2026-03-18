@@ -102,6 +102,13 @@ class QueryEngine:
 
         raw_text = response.content[0].text.strip()
 
+        # Strip markdown code fences (Haiku often wraps JSON in ```json)
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("\n", 1)[1] if "\n" in raw_text else raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            raw_text = raw_text.strip()
+
         try:
             data = json.loads(raw_text)
         except json.JSONDecodeError:
