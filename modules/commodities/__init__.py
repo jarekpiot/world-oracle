@@ -128,7 +128,7 @@ class CommoditiesModule(OracleModule):
         # Agents — all 9 wired up (T0 through T3)
         self.price_agent = PriceAgent(self.price_feed)
         self.breaking_agent = BreakingEventAgent(self.gdelt_feed)
-        self.inventory_agent = InventoryAgent(self.eia_feed)
+        self.inventory_agent = InventoryAgent(self.eia_feed, client=client)
         self.geopolitical_agent = GeopoliticalAgent(self.gdelt_feed)
         self.weather_agent = WeatherAgent(self.noaa_feed)
         self.shipping_agent = ShippingAgent(self.baltic_feed)

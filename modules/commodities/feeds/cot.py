@@ -86,9 +86,24 @@ class COTFeed(BaseFeed):
             with urlopen(req, timeout=30) as resp:
                 raw_text = resp.read().decode("utf-8", errors="replace")
 
-            # Parse CSV (comma-delimited with quoted fields)
-            reader = csv.DictReader(io.StringIO(raw_text))
-            rows = list(reader)
+            # CFTC disaggregated short format has NO header row.
+            # Parse as raw CSV and map by column index.
+            reader = csv.reader(io.StringIO(raw_text))
+            rows = []
+            for raw_row in reader:
+                if len(raw_row) < 18:
+                    continue
+                rows.append({
+                    "Market_and_Exchange_Names": raw_row[0].strip(),
+                    "As_of_Date_In_Form_YYMMDD": raw_row[1].strip(),
+                    "Report_Date_as_YYYY-MM-DD": raw_row[2].strip(),
+                    "Open_Interest_All": raw_row[7].strip(),
+                    "Prod_Merc_Positions_Long_All": raw_row[8].strip(),
+                    "Prod_Merc_Positions_Short_All": raw_row[9].strip(),
+                    "M_Money_Positions_Long_All": raw_row[13].strip(),
+                    "M_Money_Positions_Short_All": raw_row[14].strip(),
+                    "M_Money_Positions_Spread_All": raw_row[15].strip(),
+                })
 
             self._raw_cache = rows
             self._raw_cache_at = time.time()

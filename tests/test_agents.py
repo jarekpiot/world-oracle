@@ -1,11 +1,12 @@
 """
-Agent Tests — All 7 commodity agents.
+Agent Tests — All 7 commodity agents + inventory agent LLM integration.
 Tests signal direction, confidence, ZERO FABRICATION compliance, and decay triggers.
 Run: python -m pytest tests/test_agents.py -v
 """
 
+import json
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from core.registry import SignalDirection, TemporalLayer
 from modules.commodities.feeds.base import FeedResult
@@ -13,6 +14,7 @@ from modules.commodities.feeds.gdelt import GDELTFeed
 from modules.commodities.feeds.noaa import NOAAFeed
 from modules.commodities.feeds.baltic import BalticDryFeed
 from modules.commodities.feeds.cot import COTFeed
+from modules.commodities.feeds.eia import EIAFeed
 from modules.commodities.agents.geopolitical_agent import GeopoliticalAgent
 from modules.commodities.agents.weather_agent import WeatherAgent
 from modules.commodities.agents.shipping_agent import ShippingAgent
@@ -20,6 +22,7 @@ from modules.commodities.agents.positioning_agent import PositioningAgent
 from modules.commodities.agents.narrative_agent import NarrativeAgent
 from modules.commodities.agents.structural_agent import StructuralAgent
 from modules.commodities.agents.breaking_agent import BreakingEventAgent
+from modules.commodities.agents.inventory_agent import InventoryAgent
 
 
 DOMAIN = "commodity.energy.crude_oil"
@@ -440,7 +443,7 @@ class TestCommoditiesModuleFullAgent:
 
         module.price_agent = PriceAgent(module.price_feed)
         module.breaking_agent = BreakingEventAgent(module.gdelt_feed)
-        module.inventory_agent = InventoryAgent(module.eia_feed)
+        module.inventory_agent = InventoryAgent(module.eia_feed)  # No client = threshold fallback
         module.geopolitical_agent = GeopoliticalAgent(module.gdelt_feed)
         module.weather_agent = WeatherAgent(module.noaa_feed)
         module.shipping_agent = ShippingAgent(BalticDryFeed())

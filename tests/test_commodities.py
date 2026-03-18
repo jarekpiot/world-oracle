@@ -4,6 +4,7 @@ Tests the seed module, inventory agent, and EIA feed.
 Run: python -m pytest tests/test_commodities.py -v
 """
 
+import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -155,6 +156,310 @@ class TestInventoryAgent:
         signal = await agent.run("commodity.energy.crude_oil")
         assert len(signal.decay_triggers) >= 2
         assert any("OPEC" in t for t in signal.decay_triggers)
+
+
+# ─── Inventory Agent LLM Reasoning Tests ────────────────────────────────────
+
+class TestInventoryAgentLLM:
+    """Tests for the LLM reasoning path of the inventory agent."""
+
+    def _make_feed_result(self, change, latest=440000, readings=None):
+        if readings is None:
+            readings = [
+                {"period": "2025-03-14", "value": latest, "product": "crude oil"},
+                {"period": "2025-03-07", "value": latest - change, "product": "crude oil"},
+                {"period": "2025-02-28", "value": latest - change + 500, "product": "crude oil"},
+                {"period": "2025-02-21", "value": latest - change + 1000, "product": "crude oil"},
+                {"period": "2025-02-14", "value": latest - change + 1500, "product": "crude oil"},
+                {"period": "2025-02-07", "value": latest - change + 2000, "product": "crude oil"},
+            ]
+        return FeedResult(
+            data={
+                "readings": readings,
+                "latest": latest,
+                "previous": latest - change,
+                "change": change,
+                "unit": "thousand barrels",
+                "series": "weekly_crude_stocks_excl_spr",
+            },
+            ok=True,
+            fetched_at=1000.0,
+        )
+
+    def _make_llm_response(self, direction="BULLISH", confidence=0.78,
+                           reasoning="Test reasoning.", decay_triggers=None):
+        """Create a mock LLM response object."""
+        if decay_triggers is None:
+            decay_triggers = [
+                "OPEC announces output increase >500k bpd",
+                "US SPR release >20M barrels announced",
+                "EIA revises prior week data by >2M barrels",
+            ]
+        content = json.dumps({
+            "direction": direction,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "decay_triggers": decay_triggers,
+        })
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=content)]
+        return mock_response
+
+    @pytest.mark.asyncio
+    async def test_llm_bullish_signal(self):
+        """LLM returns bullish — agent should produce bullish signal."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-4000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="BULLISH",
+                confidence=0.82,
+                reasoning="Large draw of 4M bbl against seasonal norms. Trend shows 5 consecutive weeks of draws, accelerating.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence == 0.82
+        assert signal.temporal_layer == TemporalLayer.T2
+        assert "draw" in signal.reasoning.lower() or "4M" in signal.reasoning
+        client.messages.create.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_llm_bearish_signal(self):
+        """LLM returns bearish — agent should produce bearish signal."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(5000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="BEARISH",
+                confidence=0.75,
+                reasoning="Large 5M bbl build. Seasonal builds expected but this exceeds norms.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.BEARISH
+        assert signal.confidence == 0.75
+
+    @pytest.mark.asyncio
+    async def test_llm_neutral_signal(self):
+        """LLM returns neutral for ambiguous data."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(200)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="NEUTRAL",
+                confidence=0.55,
+                reasoning="Negligible 200k bbl build. Mixed trend. No clear signal.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.NEUTRAL
+        assert signal.confidence == 0.55
+
+    @pytest.mark.asyncio
+    async def test_llm_unknown_direction(self):
+        """LLM honestly returns UNKNOWN when it cannot determine direction."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(0)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="UNKNOWN",
+                confidence=0.30,
+                reasoning="Insufficient context to determine direction.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.UNKNOWN
+        assert signal.confidence == 0.30
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_falls_back_to_thresholds(self):
+        """If LLM call fails, agent falls back to threshold logic."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-4000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(side_effect=Exception("API timeout"))
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        # Should fall back to threshold: large draw = BULLISH 0.85
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence == 0.85
+
+    @pytest.mark.asyncio
+    async def test_llm_invalid_json_falls_back(self):
+        """If LLM returns invalid JSON, fall back to thresholds."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(2000)
+
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="This is not valid JSON at all")]
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(return_value=mock_response)
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        # Should fall back to threshold: moderate build = BEARISH 0.72
+        assert signal.direction == SignalDirection.BEARISH
+        assert signal.confidence == 0.72
+
+    @pytest.mark.asyncio
+    async def test_no_client_uses_thresholds(self):
+        """Without an LLM client, agent uses threshold logic."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-1500)
+
+        agent = InventoryAgent(feed, client=None)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence == 0.72
+
+    @pytest.mark.asyncio
+    async def test_llm_confidence_clamped_high(self):
+        """Confidence from LLM is clamped to max 0.88."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-5000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="BULLISH",
+                confidence=0.99,  # Too high — should be clamped
+                reasoning="Massive draw.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.confidence <= 0.88
+
+    @pytest.mark.asyncio
+    async def test_llm_confidence_clamped_low(self):
+        """Confidence from LLM is clamped to min 0.30."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(100)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="NEUTRAL",
+                confidence=0.10,  # Too low — should be clamped
+                reasoning="Flat.",
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.confidence >= 0.30
+
+    @pytest.mark.asyncio
+    async def test_llm_decay_triggers_are_specific(self):
+        """LLM-provided decay triggers should be passed through."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-2000)
+
+        triggers = [
+            "OPEC announces output increase >500k bpd",
+            "US SPR release >20M barrels announced",
+            "EIA revises prior week data by >2M barrels",
+        ]
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response(
+                direction="BULLISH",
+                confidence=0.72,
+                reasoning="Moderate draw.",
+                decay_triggers=triggers,
+            )
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert len(signal.decay_triggers) >= 2
+        assert any("OPEC" in t for t in signal.decay_triggers)
+
+    @pytest.mark.asyncio
+    async def test_one_llm_call_only(self):
+        """Agent must make exactly ONE LLM call."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-3000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response()
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        await agent.run("commodity.energy.crude_oil")
+        assert client.messages.create.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_llm_uses_correct_model(self):
+        """Agent should use claude-sonnet-4-5."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-3000)
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(
+            return_value=self._make_llm_response()
+        )
+
+        agent = InventoryAgent(feed, client=client)
+        await agent.run("commodity.energy.crude_oil")
+
+        call_kwargs = client.messages.create.call_args
+        assert call_kwargs.kwargs.get("model") == "claude-sonnet-4-5"
+
+    @pytest.mark.asyncio
+    async def test_feed_failure_skips_llm(self):
+        """If the feed is down, don't even call the LLM."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = FeedResult(ok=False, error="connection timeout")
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock()
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.UNKNOWN
+        assert signal.confidence == 0.25
+        client.messages.create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_llm_response_with_markdown_fences(self):
+        """LLM sometimes wraps JSON in markdown code fences — agent should handle it."""
+        feed = MagicMock(spec=EIAFeed)
+        feed.fetch.return_value = self._make_feed_result(-3000)
+
+        content = '```json\n{"direction": "BULLISH", "confidence": 0.78, "reasoning": "Draw.", "decay_triggers": ["Next EIA release"]}\n```'
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text=content)]
+
+        client = AsyncMock()
+        client.messages.create = AsyncMock(return_value=mock_response)
+
+        agent = InventoryAgent(feed, client=client)
+        signal = await agent.run("commodity.energy.crude_oil")
+        assert signal.direction == SignalDirection.BULLISH
+        assert signal.confidence == 0.78
 
 
 # ─── Commodities Module Tests ───────────────────────────────────────────────
