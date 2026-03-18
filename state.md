@@ -3,11 +3,11 @@
 
 ---
 
-## Status: Production — CI/CD Active, PostgreSQL Ready
+## Status: Production — Fully Operational
 
-Three modules live. CI/CD pipeline green. Deployed to Railway.
-Async SQLAlchemy persistence layer supports PostgreSQL (production) and SQLite (dev/tests).
+Three modules live. PostgreSQL persisting. CI/CD green. Auto-deploying.
 **167 tests passing** across 11 test files.
+**Track record:** 4 oracle calls logged in PostgreSQL, surviving across deploys.
 
 **Live API:** https://world-oracle-production.up.railway.app
 **Visualization:** https://world-oracle-production.up.railway.app/visual/
@@ -21,12 +21,26 @@ Async SQLAlchemy persistence layer supports PostgreSQL (production) and SQLite (
 ```
 GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deploy)
                                                                |
-                                                   PostgreSQL (persistent)
+                                              PostgreSQL (Railway plugin — persistent)
                                                                |
                                     FastAPI <-- 3 modules, 15 agents, 10 feeds
                                        |
-                            /api/query  /api/health  /visual/
+                            /api/query  /api/health  /api/history  /visual/
 ```
+
+---
+
+## Infrastructure — All Connected
+
+| Component | Status |
+|---|---|
+| Railway API service | Live — `world-oracle-production.up.railway.app` |
+| Railway PostgreSQL plugin | Live — `postgres.railway.internal:5432/railway` |
+| DATABASE_URL injected | Done — app auto-detects PostgreSQL |
+| Tables auto-created | Done — OracleCall + SignalLog |
+| CI/CD pipeline | Green — GitHub Actions tests gate every deploy |
+| GitHub secrets | Set — ANTHROPIC_API_KEY, EIA_API_KEY, RAILWAY_TOKEN |
+| CORS | Enabled — visualization works from file:// and served |
 
 ---
 
@@ -75,7 +89,7 @@ GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deplo
 | FastAPI Server | `api/server.py` | Live — 6 endpoints, rate limiting, CORS |
 | Database Models | `db/models.py` | SQLAlchemy 2.0 — OracleCall + SignalLog |
 | Async Engine | `db/engine.py` | Auto-detects PostgreSQL vs SQLite |
-| Signal Store | `db/signal_store.py` | Fully async — logs calls, signals, outcomes |
+| Signal Store | `db/signal_store.py` | Fully async — logs calls + individual signals |
 | Feed Monitor | `core/feed_monitor.py` | Health checks every 15 min |
 | CI/CD | `.github/workflows/deploy.yml` | Tests gate deploy, auto-deploys to Railway |
 
@@ -87,30 +101,41 @@ GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deplo
 | Arc Flows | Animated arcs from agents to oracle core |
 | Ripple Rings | Pulsing at T0/T1/T2/T3 temporal speed |
 | Orbital Torus Rings | 4 rings breathing at temporal frequencies |
-| Fresnel GLSL Glow | Color shifts: gold (bullish), blue (bearish), red (war), dim (abstain) |
-| GSAP Breathing | Cardiac rhythm T0 (0.12s attack), sine T1-T3 |
-| Tone.js Audio | Optional — 55hz drone + heartbeat kick |
+| Fresnel GLSL Glow | Color shifts: gold/blue/red/dim per state |
+| GSAP Breathing | Cardiac rhythm T0, sine T1-T3 |
+| Tone.js Audio | Optional soundscape |
 | Mode Controls | live / war mode / full align / pause / sound |
 
 ---
 
-## Database — PostgreSQL Migration
+## Database — PostgreSQL (Live)
 
 | Item | Status |
 |---|---|
+| Railway PostgreSQL plugin | Live — `postgres.railway.internal:5432/railway` |
+| DATABASE_URL on API service | Set — auto-detected by engine |
 | SQLAlchemy async models | Done — `db/models.py` |
-| Async engine + session factory | Done — `db/engine.py` |
-| Signal store rewritten async | Done — `db/signal_store.py` |
-| API server all `await` calls | Done |
-| Auto-create tables on startup | Done |
-| Code detects PostgreSQL vs SQLite | Done |
-| **Add PostgreSQL plugin on Railway** | **PENDING — manual step in Railway dashboard** |
+| Async engine + sessions | Done — `db/engine.py` |
+| Signal store async | Done — `db/signal_store.py` |
+| Tables auto-created | Done — OracleCall + SignalLog |
+| Signal logging per agent | Done — each agent's signal logged individually |
+| Data persists across deploys | Verified — 4 calls surviving |
+| Old SQLite data | Lost — Railway ephemeral filesystem wiped it pre-migration |
 
-### To complete the migration:
-1. Railway dashboard → project → **"+ New" → Database → PostgreSQL**
-2. Railway auto-injects `DATABASE_URL` into the API service
-3. Next deploy auto-creates tables — no manual SQL needed
-4. Track record persists permanently across all future deploys
+---
+
+## Track Record (PostgreSQL)
+
+```
+Total calls:  4
+Responded:    4
+Abstained:    0
+Scored:       0 (no outcomes recorded yet)
+Win rate:     N/A
+
+All calls: BEARISH on crude oil, confidence 0.736, alignment 0.667
+Track record starts fresh from PostgreSQL migration.
+```
 
 ---
 
@@ -118,6 +143,7 @@ GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deplo
 | Target | URL | Status |
 |---|---|---|
 | Railway API | https://world-oracle-production.up.railway.app | Live |
+| Railway PostgreSQL | postgres.railway.internal:5432 | Live |
 | Visualization | https://world-oracle-production.up.railway.app/visual/ | Live |
 | GitHub | https://github.com/jarekpiot/world-oracle | Pushed |
 | CI/CD | GitHub Actions | Green — tests gate deploy |
@@ -152,31 +178,14 @@ GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deplo
 
 ---
 
-## Live Oracle Responses (2026-03-18)
-
-**Call 1 (pre-T0):**
-```
-Direction: BEARISH | Confidence: 0.786 | Alignment: 1.00
-Thesis: Large inventory builds + geopolitical calm
-```
-
-**Call 2 (with T0):**
-```
-Direction: BEARISH | Confidence: 0.736 | Alignment: 0.667
-Thesis: Inventory glut dominates despite +4.28% price move
-Note: T0 bullish vs T2 bearish correctly identified as different horizons
-```
-
----
-
 ## What's NOT Built Yet
 | Item | Priority | Notes |
 |---|---|---|
-| PostgreSQL on Railway | **HIGH** | Manual step — add plugin in dashboard |
 | Baltic Dry data | Medium | No free API — needs paid provider |
 | Crypto onchain feed | Medium | Needs Glassnode/Dune/CryptoQuant |
 | Equities Module | Next | Same contract, new domain prefix |
-| Alembic migrations | Low | Tables auto-create; Alembic needed for schema changes |
+| Alembic migrations | Low | Tables auto-create; Alembic for schema changes |
+| GDELT rate limiting | Low | Getting 429s — need request throttling or caching |
 
 ---
 
@@ -200,9 +209,9 @@ open dashboard/visual/index.html
 
 ## Environment Variables
 ```bash
-# Production (Railway injects DATABASE_URL automatically)
-ANTHROPIC_API_KEY=sk-ant-...     # required for LLM calls
-EIA_API_KEY=...                   # free at eia.gov
+# Production (all set on Railway)
+ANTHROPIC_API_KEY=sk-ant-...     # set in Railway vars
+EIA_API_KEY=...                   # set in Railway vars
 DATABASE_URL=postgresql://...     # injected by Railway PostgreSQL plugin
 
 # Local dev
