@@ -50,7 +50,7 @@ class GDELTFeed(BaseFeed):
 
     def _url(self, **kwargs) -> str:
         query = kwargs.get("query", "oil energy conflict sanctions")
-        mode = kwargs.get("mode", "artlist")
+        mode = kwargs.get("mode", "tonechart")
         return (
             f"https://api.gdeltproject.org/api/v2/doc/doc"
             f"?query={query.replace(' ', '%20')}"
@@ -62,42 +62,73 @@ class GDELTFeed(BaseFeed):
 
     def _parse(self, raw: dict) -> dict:
         """
-        Parse GDELT response into geopolitical signal data.
-        Key metric: average tone (negative = conflict/tension).
+        Parse GDELT tonechart response into geopolitical signal data.
+        Tonechart returns bins of articles by tone score with article counts.
+        Negative bins = conflict/crisis, positive = cooperation/calm.
         """
-        articles = raw.get("articles", [])
+        # Handle tonechart format: {"tonechart": [{"bin": -5, "count": 122, "toparts": [...]}, ...]}
+        bins = raw.get("tonechart", [])
 
-        if not articles:
+        # Also handle artlist fallback
+        if not bins and "articles" in raw:
+            articles = raw.get("articles", [])
+            total = len(articles)
+            return {
+                "article_count": total,
+                "avg_tone": 0.0,
+                "escalation_score": 0.0,
+                "active_regions": [],
+                "region_hits": {},
+                "headlines": [a.get("title", "") for a in articles[:5]],
+            }
+
+        if not bins:
             return {
                 "article_count": 0,
                 "avg_tone": 0.0,
-                "regions_mentioned": [],
                 "escalation_score": 0.0,
+                "active_regions": [],
+                "region_hits": {},
+                "headlines": [],
             }
 
-        tones = []
+        # Calculate weighted average tone from bins
+        total_articles = 0
+        weighted_tone = 0.0
+        headlines = []
         region_hits = {region: 0 for region in COMMODITY_REGIONS}
 
-        for article in articles:
-            tone = article.get("tone", 0)
-            if isinstance(tone, (int, float)):
-                tones.append(tone)
+        for b in bins:
+            tone_val = b.get("bin", 0)
+            count = b.get("count", 0)
+            total_articles += count
+            weighted_tone += tone_val * count
 
-            title = (article.get("title", "") + " " + article.get("seendate", "")).lower()
-            for key, terms in COMMODITY_REGIONS.items():
-                if any(t.lower() in title for t in terms.split()):
-                    region_hits[key] += 1
+            # Extract headlines and check regions
+            for art in b.get("toparts", [])[:3]:
+                title = art.get("title", "")
+                if title:
+                    headlines.append(title)
+                    title_lower = title.lower()
+                    for key, terms in COMMODITY_REGIONS.items():
+                        if any(t.lower() in title_lower for t in terms.split()):
+                            region_hits[key] += 1
 
-        avg_tone = sum(tones) / len(tones) if tones else 0.0
+        avg_tone = weighted_tone / total_articles if total_articles > 0 else 0.0
+
+        # Escalation score: 0 = calm, 1 = acute crisis
+        # Tone -5 or worse = very high escalation
         escalation = min(1.0, max(0.0, (-avg_tone) / 5.0))
+
         active_regions = [r for r, count in region_hits.items() if count > 0]
 
         return {
-            "article_count": len(articles),
+            "article_count": total_articles,
             "avg_tone": round(avg_tone, 3),
             "escalation_score": round(escalation, 3),
             "active_regions": active_regions,
             "region_hits": {r: c for r, c in region_hits.items() if c > 0},
+            "headlines": headlines[:10],
         }
 
     def fetch(self, **kwargs) -> FeedResult:
