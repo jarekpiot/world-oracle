@@ -6,11 +6,13 @@
 ## Status: Production — Fully Operational
 
 Three modules live. PostgreSQL persisting. CI/CD green. Auto-deploying.
+Multi-asset visualization with state panel. T0 breaking event agent in progress.
 **167 tests passing** across 11 test files.
-**Track record:** 4 oracle calls logged in PostgreSQL, surviving across deploys.
+**Track record:** 4+ oracle calls logged in PostgreSQL.
 
-**Live API:** https://world-oracle-production.up.railway.app
-**Visualization:** https://world-oracle-production.up.railway.app/visual/
+**Live:** https://world-oracle-production.up.railway.app
+**Visual:** https://world-oracle-production.up.railway.app/visual/
+**API:** https://world-oracle-production.up.railway.app/api/health
 **Repo:** https://github.com/jarekpiot/world-oracle
 **CI/CD:** https://github.com/jarekpiot/world-oracle/actions
 
@@ -19,201 +21,136 @@ Three modules live. PostgreSQL persisting. CI/CD green. Auto-deploying.
 ## Architecture
 
 ```
-GitHub (main) --push--> GitHub Actions (167 tests) --pass--> Railway (auto-deploy)
-                                                               |
-                                              PostgreSQL (Railway plugin — persistent)
-                                                               |
-                                    FastAPI <-- 3 modules, 15 agents, 10 feeds
-                                       |
-                            /api/query  /api/health  /api/history  /visual/
+GitHub (main) --> GitHub Actions (167 tests) --> Railway (auto-deploy)
+                                                   |
+                                      PostgreSQL (Railway plugin)
+                                                   |
+                             FastAPI <-- 3 modules, 15 agents, 10 feeds
+                                |
+                  /api/query  /api/health  /api/history
+                                |
+                     /visual/ (breathing visualization + state panel)
+                         |
+              [OIL] [GAS] [GOLD] [CU] [EUR] [JPY] [BTC] [ETH]
 ```
-
----
-
-## Infrastructure — All Connected
-
-| Component | Status |
-|---|---|
-| Railway API service | Live — `world-oracle-production.up.railway.app` |
-| Railway PostgreSQL plugin | Live — `postgres.railway.internal:5432/railway` |
-| DATABASE_URL injected | Done — app auto-detects PostgreSQL |
-| Tables auto-created | Done — OracleCall + SignalLog |
-| CI/CD pipeline | Green — GitHub Actions tests gate every deploy |
-| GitHub secrets | Set — ANTHROPIC_API_KEY, EIA_API_KEY, RAILWAY_TOKEN |
-| CORS | Enabled — visualization works from file:// and served |
 
 ---
 
 ## What's Built
 
-### Core Spine (Phase 1)
-| Component | File | Status |
-|---|---|---|
-| Module Contract | `core/registry.py` | Sacred — do not change without team agreement |
-| Query Engine | `core/query_engine.py` | Layer 1 — LLM decomposition + DAG |
-| Temporal Engine | `core/temporal_engine.py` | T0-T3 signal lifecycle + decay |
-| Confidence Engine | `core/confidence_engine.py` | Scoring + abstain rule |
-| Synthesiser | `core/synthesiser.py` | Layer 3 — evidence aggregation |
-| Formatter | `output/formatter.py` | Layer 4 — structured output |
+### Core Spine
+- Module Contract (`core/registry.py`) — sacred
+- Query Engine, Temporal Engine, Confidence Engine, Synthesiser, Formatter
 
-### Oracle Team — Commodities Module (8 agents)
+### Commodities Module (8 agents + T0 breaking in progress)
 | Agent | Layer | Feed | Status |
 |---|---|---|---|
 | price_agent | T0 | EIA Spot | Live |
+| **breaking_agent** | **T0** | **GDELT** | **Building — detects missile strikes, explosions, port closures** |
 | inventory_agent | T2 | EIA Weekly | Live |
-| geopolitical_agent | T1 | GDELT | Live |
+| positioning_agent | T2 | CFTC COT | Live — full CSV parser |
+| geopolitical_agent | T1 | GDELT | Live — reads crisis arc pattern |
 | weather_agent | T1/T2 | NOAA | Live |
 | narrative_agent | T1 | GDELT | Live |
 | structural_agent | T3 | Curated | Live |
-| positioning_agent | T2 | CFTC COT | Live — full CSV parser |
 | shipping_agent | T2 | Baltic Dry | UNKNOWN — needs paid data |
 
-### Oracle Team — FX Module (3 agents)
-| Agent | Layer | Feed | Status |
-|---|---|---|---|
-| rate_differential_agent | T2/T3 | Curated | Live — EUR/USD, USD/JPY, GBP/USD, USD/CHF |
-| flow_agent | T1/T2 | GDELT | Live — risk-on/risk-off |
-| sentiment_agent | T0/T1 | GDELT | Live |
-
-### Oracle Team — Crypto Module (4 agents)
-| Agent | Layer | Feed | Status |
-|---|---|---|---|
-| onchain_agent | T1 | (pending) | UNKNOWN — needs Glassnode/Dune |
-| narrative_agent | T0/T1 | GDELT | Live |
-| structural_agent | T3 | Curated | Live — BTC, ETH, SOL |
-| regulation_agent | T2/T3 | GDELT | Live — SEC/CFTC/MiCA |
-
-### Build Team — Platform
-| Component | File | Status |
+### FX Module (3 agents)
+| Agent | Layer | Status |
 |---|---|---|
-| FastAPI Server | `api/server.py` | Live — 6 endpoints, rate limiting, CORS |
-| Database Models | `db/models.py` | SQLAlchemy 2.0 — OracleCall + SignalLog |
-| Async Engine | `db/engine.py` | Auto-detects PostgreSQL vs SQLite |
-| Signal Store | `db/signal_store.py` | Fully async — logs calls + individual signals |
-| Feed Monitor | `core/feed_monitor.py` | Health checks every 15 min |
-| CI/CD | `.github/workflows/deploy.yml` | Tests gate deploy, auto-deploys to Railway |
+| rate_differential_agent | T2/T3 | Live — EUR/USD, USD/JPY, GBP/USD, USD/CHF |
+| flow_agent | T1/T2 | Live — risk-on/risk-off |
+| sentiment_agent | T0/T1 | Live |
 
-### Visual Engineer
+### Crypto Module (4 agents)
+| Agent | Layer | Status |
+|---|---|---|
+| structural_agent | T3 | Live — BTC, ETH, SOL |
+| regulation_agent | T2/T3 | Live — SEC/CFTC/MiCA |
+| narrative_agent | T0/T1 | Live |
+| onchain_agent | T1 | UNKNOWN — needs Glassnode/Dune |
+
+### Platform
+| Component | Status |
+|---|---|
+| FastAPI Server | Live — 6 endpoints, rate limiting, CORS, root redirect |
+| PostgreSQL | Live — Railway plugin, data persists across deploys |
+| Signal Store | Async SQLAlchemy — OracleCall + SignalLog tables |
+| Feed Monitor | Health checks every 15 min |
+| CI/CD | GitHub Actions — tests gate deploy |
+
+### Visualization
 | Feature | Status |
 |---|---|
-| 3D WebGL Globe (globe.gl) | Blue Marble + topology + atmosphere |
-| Signal Nodes | Glowing dots at 15 real lat/lng locations |
-| Arc Flows | Animated arcs from agents to oracle core |
-| Ripple Rings | Pulsing at T0/T1/T2/T3 temporal speed |
-| Orbital Torus Rings | 4 rings breathing at temporal frequencies |
-| Fresnel GLSL Glow | Color shifts: gold/blue/red/dim per state |
-| GSAP Breathing | Cardiac rhythm T0, sine T1-T3 |
-| Tone.js Audio | Optional soundscape |
-| Mode Controls | live / war mode / full align / pause / sound |
+| Canvas 2D orbital rings | 5 rings breathing at T3/T2/T1/T0/war frequencies |
+| Three.js translucent globe | Wireframe icosahedron with Fresnel glow |
+| Signal nodes | 15 orbiting dots with halos and particle sparks |
+| State panel (Option B) | Direction, confidence, band, alignment, thesis |
+| Signal breakdown | Grouped by T3/T2/T1/T0 with confidence bars |
+| Risk section | Invalidators + devil's advocate |
+| **Multi-asset selector** | **OIL, GAS, GOLD, CU, EUR, JPY, BTC, ETH** |
+| Scroll zoom | 0.4x to 1.6x — fits any screen |
+| Mode controls | live / war mode / full align / pause |
+| Mock data fallback | Renders immediately, live data replaces async |
+| LIVE/MOCK badge | Shows data source |
 
 ---
 
-## Database — PostgreSQL (Live)
-
-| Item | Status |
-|---|---|
-| Railway PostgreSQL plugin | Live — `postgres.railway.internal:5432/railway` |
-| DATABASE_URL on API service | Set — auto-detected by engine |
-| SQLAlchemy async models | Done — `db/models.py` |
-| Async engine + sessions | Done — `db/engine.py` |
-| Signal store async | Done — `db/signal_store.py` |
-| Tables auto-created | Done — OracleCall + SignalLog |
-| Signal logging per agent | Done — each agent's signal logged individually |
-| Data persists across deploys | Verified — 4 calls surviving |
-| Old SQLite data | Lost — Railway ephemeral filesystem wiped it pre-migration |
-
----
-
-## Track Record (PostgreSQL)
-
-```
-Total calls:  4
-Responded:    4
-Abstained:    0
-Scored:       0 (no outcomes recorded yet)
-Win rate:     N/A
-
-All calls: BEARISH on crude oil, confidence 0.736, alignment 0.667
-Track record starts fresh from PostgreSQL migration.
-```
-
----
-
-## Deployment
-| Target | URL | Status |
+## War / Event Temporal Model
+| What happened | Layer | Why |
 |---|---|---|
-| Railway API | https://world-oracle-production.up.railway.app | Live |
-| Railway PostgreSQL | postgres.railway.internal:5432 | Live |
-| Visualization | https://world-oracle-production.up.railway.app/visual/ | Live |
-| GitHub | https://github.com/jarekpiot/world-oracle | Pushed |
-| CI/CD | GitHub Actions | Green — tests gate deploy |
+| "Missile hit terminal 3 min ago" | T0 | The flash — breaking_agent |
+| "Is this escalation or one-off?" | T1 | Narrative — geopolitical_agent |
+| "Middle East in escalation phase" | T2 | Crisis arc — geopolitical_agent |
+| "Region permanently unstable" | T3 | Structural — structural_agent |
+
+The explosion is T0. Its meaning propagates upward through all layers.
 
 ---
 
-## Test Coverage
-| Test File | Count | Covers |
+## Database
+- PostgreSQL on Railway — `postgres.railway.internal:5432/railway`
+- DATABASE_URL injected into API service
+- Tables auto-created on startup (OracleCall + SignalLog)
+- Track record persists permanently across deploys
+
+---
+
+## Test Coverage: 167 passing
+| File | Count | Covers |
 |---|---|---|
-| `test_foundation.py` | 19 | Spine — temporal, confidence, registry, formatter |
-| `test_commodities.py` | 18 | Feeds + inventory agent + module contract |
-| `test_agents.py` | 22 | All 8 commodity agents incl. T0 price |
-| `test_price_agent.py` | 9 | T0 heartbeat — price direction, thresholds |
-| `test_cot_parser.py` | 18 | CFTC COT parser + positioning agent |
-| `test_fx.py` | 20 | FX module — 3 agents, flow, sentiment |
-| `test_crypto.py` | 31 | Crypto module — 4 agents, regulation, onchain |
-| `test_api.py` | 10 | FastAPI endpoints + rate limiter |
-| `test_signal_store.py` | 9 | Async persistence, history, outcomes, track record |
-| `test_feed_monitor.py` | 5 | Health check aggregation + summary |
-| `test_dashboard.py` | 3 | Dashboard structure + visual HTML |
-| **Total** | **167** | **All passing** |
-
----
-
-## Temporal Layer Coverage
-| Layer | Commodity Agents | FX Agents | Crypto Agents |
-|---|---|---|---|
-| T3 Slow | structural | rate_differential | structural |
-| T2 Regular | inventory, positioning, (shipping) | rate_differential, flow | regulation |
-| T1 Quick | geopolitical, weather, narrative | flow, sentiment | narrative, (onchain) |
-| T0 Heartbeat | price | sentiment | narrative |
+| test_foundation.py | 19 | Spine |
+| test_commodities.py | 18 | Feeds + module contract |
+| test_agents.py | 22 | All commodity agents |
+| test_price_agent.py | 9 | T0 price |
+| test_cot_parser.py | 18 | CFTC COT parser |
+| test_fx.py | 20 | FX module |
+| test_crypto.py | 31 | Crypto module |
+| test_api.py | 10 | FastAPI endpoints |
+| test_signal_store.py | 9 | Async persistence |
+| test_feed_monitor.py | 5 | Health checks |
+| test_dashboard.py | 3 | Dashboard + visual |
+| **Total** | **167** | |
 
 ---
 
 ## What's NOT Built Yet
 | Item | Priority | Notes |
 |---|---|---|
-| Baltic Dry data | Medium | No free API — needs paid provider |
-| Crypto onchain feed | Medium | Needs Glassnode/Dune/CryptoQuant |
-| Equities Module | Next | Same contract, new domain prefix |
-| Alembic migrations | Low | Tables auto-create; Alembic for schema changes |
-| GDELT rate limiting | Low | Getting 429s — need request throttling or caching |
+| T0 breaking event agent | In progress | Detects explosions, strikes, seizures |
+| Baltic Dry feed | Medium | Needs paid data provider |
+| Crypto onchain feed | Medium | Needs Glassnode/Dune |
+| Equities Module | Next | Same contract, new domain |
+| Alembic migrations | Low | Tables auto-create for now |
+| GDELT rate limiting | Low | Getting 429s — need throttling |
 
 ---
 
 ## How to Run
 ```bash
-# Tests (167 passing)
 DATABASE_URL=sqlite+aiosqlite:///test.db python -m pytest tests/ -v
-
-# CLI
 python main.py --query "Will crude oil prices rise over the next 6 weeks?"
-
-# API server (local)
 DATABASE_URL=sqlite+aiosqlite:///local.db uvicorn api.server:app --reload --port 8000
-
-# Dashboard
 streamlit run dashboard/app.py
-
-# Visualization (standalone)
 open dashboard/visual/index.html
-```
-
-## Environment Variables
-```bash
-# Production (all set on Railway)
-ANTHROPIC_API_KEY=sk-ant-...     # set in Railway vars
-EIA_API_KEY=...                   # set in Railway vars
-DATABASE_URL=postgresql://...     # injected by Railway PostgreSQL plugin
-
-# Local dev
-DATABASE_URL=sqlite+aiosqlite:///local_dev.db
 ```
