@@ -41,13 +41,15 @@ canvas{display:block;position:absolute;top:0;left:0}
 
 /* Panel toggle button */
 #panel-toggle{
-  position:absolute;left:-28px;top:50%;transform:translateY(-50%);
+  position:fixed;right:30%;top:50%;transform:translateY(-50%);
   width:24px;height:48px;background:rgba(2,13,24,0.85);border:0.5px solid #0a3a4a;
-  border-right:none;border-radius:6px 0 0 6px;cursor:pointer;z-index:10;
+  border-right:none;border-radius:6px 0 0 6px;cursor:pointer;z-index:30;
   display:flex;align-items:center;justify-content:center;
-  color:#3a6a8a;font-size:11px;transition:all 0.3s;pointer-events:all;
+  color:#3a6a8a;font-size:11px;transition:all 0.3s,right 0.4s;pointer-events:all;
 }
 #panel-toggle:hover{color:#7dd4f8;background:rgba(10,42,58,0.9)}
+#state-panel.collapsed~#panel-toggle,
+.panel-collapsed #panel-toggle{right:0}
 
 /* Signal hover detail popup */
 .sp-detail{
@@ -141,8 +143,8 @@ canvas{display:block;position:absolute;top:0;left:0}
 </div>
 
 <!-- STATE PANEL -->
+<div id="panel-toggle">&lsaquo;</div>
 <div id="state-panel">
-  <div id="panel-toggle" onclick="togglePanel()">&lsaquo;</div>
   <div class="sp-detail" id="sp-detail">
     <div class="sp-detail-agent"></div>
     <div class="sp-detail-reasoning"></div>
@@ -887,14 +889,15 @@ setTimeout(()=>{document.getElementById('state-panel').classList.add('visible')}
 // ═══════════════════════════════════════════════════════════════════════════
 // PANEL TOGGLE — slide in/out
 // ═══════════════════════════════════════════════════════════════════════════
-function togglePanel(){
+document.getElementById('panel-toggle').addEventListener('click',function(){
   const panel=document.getElementById('state-panel');
-  const btn=document.getElementById('panel-toggle');
+  const btn=this;
+  const collapsing=!panel.classList.contains('collapsed');
   panel.classList.toggle('collapsed');
-  btn.innerHTML=panel.classList.contains('collapsed')?'&rsaquo;':'&lsaquo;';
-  // Trigger resize so visualization fills the space
-  setTimeout(resize,400);
-}
+  btn.innerHTML=collapsing?'&rsaquo;':'&lsaquo;';
+  btn.style.right=collapsing?'0':'30%';
+  setTimeout(resize,450);
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HOVER DETAIL POPUP — shows reasoning + decay triggers on signal hover
